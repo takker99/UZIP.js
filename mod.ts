@@ -1,16 +1,16 @@
 /**
  * Decode a zip file and extracts its contents.
- * @param buf the zip file data.
+ * @param zip the zip file data.
  * @param onlyNames If true, only the names of the files will be returned.
  * @returns A record object containing the extracted files, where the keys are the file names and the values are either the file data or an object with the properties `size` and `csize`.
  */
 export const decode = async (
-  buf: Readonly<Uint8Array>,
+  zip: Readonly<Uint8Array>,
   onlyNames?: boolean,
 ): Promise<Record<string, { size: number; csize: number } | Uint8Array>> => {
-  let eocd = buf.length - 4;
+  let eocd = zip.length - 4;
 
-  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
 
   while (view.getUint32(eocd, true) !== 0x06054b50) eocd--;
 
@@ -69,7 +69,7 @@ export const decode = async (
 };
 
 const readLocal = async (
-  data: Readonly<DataView>,
+  view: Readonly<DataView>,
   o: number,
   csize: number,
   usize: number,
@@ -87,7 +87,7 @@ const readLocal = async (
   //   const gpflg = readUshort(data, o);
   o += 2;
   //if((gpflg&8)!=0) throw "unknown sizes";
-  const cmpr = data.getUint16(o, true);
+  const cmpr = view.getUint16(o, true);
   o += 2;
 
   //   const time = readUint(data, o);
@@ -99,19 +99,19 @@ const readLocal = async (
   //var usize = readUint(data, o);  o+=4;
   o += 8;
 
-  const nlen = data.getUint16(o, true);
+  const nlen = view.getUint16(o, true);
   o += 2;
-  const elen = data.getUint16(o, true);
+  const elen = view.getUint16(o, true);
   o += 2;
   const name = new TextDecoder().decode(
-    new Uint8Array(data.buffer, data.byteOffset + o, nlen),
+    new Uint8Array(view.buffer, view.byteOffset + o, nlen),
   );
   o += nlen; //console.log(name);
   o += elen;
 
   if (onlyNames) return { name, size: usize, csize };
 
-  const file = new Uint8Array(data.buffer, data.byteOffset + o, csize);
+  const file = new Uint8Array(view.buffer, view.byteOffset + o, csize);
   if (cmpr == 0) {
     return { name, file: new Uint8Array(file) };
   } else if (cmpr == 8) {
@@ -129,20 +129,20 @@ interface File {
 /**
  * Compresses an object where the keys represent file names and the values represent data, and creates a zip file.
  *
- * @param obj - The object containing the data to be compressed.
- * @param noCmpr - Optional. If set to true, compression will be disabled. Default is false.
+ * @param files - The object containing the data to be compressed.
+ * @param noCompression - Optional. If set to true, compression will be disabled. Default is false.
  * @returns The compressed data
  */
 export const encode = async (
-  obj: Readonly<Record<string, Uint8Array>>,
-  noCmpr?: boolean,
+  files: Readonly<Record<string, Uint8Array>>,
+  noCompression?: boolean,
 ): Promise<Uint8Array> => {
-  if (noCmpr == null) noCmpr = false;
+  if (noCompression == null) noCompression = false;
   let tot = 0;
   const zpd: Record<string, Promise<File>> = Object.fromEntries(
-    [...Object.entries(obj)].map(
+    [...Object.entries(files)].map(
       ([key, buf]) => {
-        const cpr = !noNeed(key) && !noCmpr;
+        const cpr = !noNeed(key) && !noCompression;
         const file = (async () => ({
           cpr: cpr,
           usize: buf.length,
