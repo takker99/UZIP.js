@@ -5,12 +5,13 @@
  * @returns A record object containing the extracted files, where the keys are the file names and the values are either the file data or an object with the properties `size` and `csize`.
  */
 export const decode = async (
-  zip: Readonly<Uint8Array>,
+  zip: Readonly<InputType>,
   onlyNames?: boolean,
 ): Promise<Record<string, { size: number; csize: number } | Uint8Array>> => {
-  let eocd = zip.length - 4;
+  const buffer = await new Response(zip).arrayBuffer();
+  let eocd = buffer.byteLength - 4;
 
-  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  const view = new DataView(buffer);
 
   while (view.getUint32(eocd, true) !== 0x06054b50) eocd--;
 
@@ -68,6 +69,8 @@ export const decode = async (
   return out;
 };
 
+export type InputType = BufferSource | Blob | ReadableStream<Uint8Array>;
+
 const readLocal = async (
   view: Readonly<DataView>,
   o: number,
@@ -119,7 +122,7 @@ const readLocal = async (
   } else throw "unknown compression method: " + cmpr;
 };
 
-interface File {
+interface FileInZip {
   cpr: boolean;
   usize: number;
   crc: number;
@@ -134,21 +137,26 @@ interface File {
  * @returns The compressed data
  */
 export const encode = async (
-  files: Readonly<Record<string, Uint8Array>>,
+  files: Readonly<Record<string, InputType>>,
   noCompression?: boolean,
 ): Promise<Uint8Array> => {
   if (noCompression == null) noCompression = false;
   let tot = 0;
-  const zpd: Record<string, Promise<File>> = Object.fromEntries(
+  const zpd: Record<string, Promise<FileInZip>> = Object.fromEntries(
     [...Object.entries(files)].map(
       ([key, buf]) => {
         const cpr = !noNeed(key) && !noCompression;
-        const file = (async () => ({
-          cpr: cpr,
-          usize: buf.length,
-          crc: crc(buf, 0, buf.length),
-          file: (cpr ? await deflateRaw(buf) : buf),
-        }))();
+        const file = (async () => {
+          const buffer = buf instanceof Uint8Array
+            ? buf
+            : new Uint8Array(await new Response(buf).arrayBuffer());
+          return {
+            cpr: cpr,
+            usize: buffer.byteLength,
+            crc: crc(buffer, 0, buffer.length),
+            file: (cpr ? await deflateRaw(buf) : buffer),
+          };
+        })();
 
         return [key, file];
       },
@@ -204,7 +212,7 @@ const writeHeader = (
   data: Uint8Array,
   o: number,
   p: string,
-  obj: File,
+  obj: FileInZip,
   t: number,
   roff?: number,
 ) => {

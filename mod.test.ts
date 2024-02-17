@@ -19,8 +19,4 @@ Deno.test("zip and unzip", async (t) => {
 
     assertEquals(await decode(await encode(obj)), obj);
   });
-  await t.step("test", async () => {
-
-    console.log(await decode(await Deno.readFile("test.apkg")));
-  });
 });
