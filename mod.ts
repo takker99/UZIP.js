@@ -9,10 +9,10 @@ export const decode = async (
   onlyNames?: boolean,
 ): Promise<Record<string, { size: number; csize: number } | Uint8Array>> => {
   const buffer = await new Response(zip).arrayBuffer();
-  let eocd = buffer.byteLength - 4;
 
   const view = new DataView(buffer);
 
+  let eocd = buffer.byteLength - 4;
   while (view.getUint32(eocd, true) !== 0x06054b50) eocd--;
 
   let o = eocd;
@@ -140,8 +140,7 @@ export const encode = async (
   files: Readonly<Record<string, InputType>>,
   noCompression?: boolean,
 ): Promise<Uint8Array> => {
-  if (noCompression == null) noCompression = false;
-  let tot = 0;
+  noCompression ??= false;
   const zpd: Record<string, Promise<FileInZip>> = Object.fromEntries(
     [...Object.entries(files)].map(
       ([key, buf]) => {
@@ -163,6 +162,7 @@ export const encode = async (
     ),
   );
 
+  let tot = 0;
   for (const p in zpd) {
     tot += (await zpd[p]).file.length + 30 + 46 +
       2 * (new TextEncoder().encode(p)).length;
@@ -259,9 +259,8 @@ const writeHeader = (
   return o;
 };
 
-const crc = (b: Uint8Array, o: number, l: number) => {
-  return update(0xffffffff, b, o, l) ^ 0xffffffff;
-};
+const crc = (b: Uint8Array, o: number, l: number) =>
+  update(0xffffffff, b, o, l) ^ 0xffffffff;
 
 const table = (() => {
   const tab = new Uint32Array(256);
