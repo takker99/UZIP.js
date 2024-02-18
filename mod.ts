@@ -4,10 +4,9 @@
  * @param onlyNames If true, only the names of the files will be returned.
  * @returns A record object containing the extracted files, where the keys are the file names and the values are either the file data or an object with the properties `size` and `csize`.
  */
-export const decode = async (
+export async function* decode(
   zip: Readonly<InputType>,
-  onlyNames?: boolean,
-): Promise<Record<string, { size: number; csize: number } | Uint8Array>> => {
+): AsyncGenerator<Entry, void, void> {
   const buffer = await new Response(zip).arrayBuffer();
 
   const view = new DataView(buffer);
@@ -29,7 +28,6 @@ export const decode = async (
   o += 4;
 
   o = coffs;
-  const out: Record<string, { size: number; csize: number } | Uint8Array> = {};
   for (let i = 0; i < cnu; i++) {
     // const sign = readUint(data, o);
     o += 4;
@@ -56,33 +54,27 @@ export const decode = async (
     o += 4;
     o += nl + el + cl;
 
-    const { name, ...file } = await readLocal(
-      view,
-      roff,
-      csize,
-      usize,
-      onlyNames ?? false,
-    );
-    out[name] = "file" in file ? file.file : file;
+    yield readLocal(view, roff, csize, usize);
   }
-  //console.log(out);
-  return out;
-};
+}
+
+export interface Entry {
+  name: string;
+  csize: number;
+  usize: number;
+  arrayBuffer: () => Promise<ArrayBuffer>;
+  file: () => Promise<File>;
+  text: () => Promise<string>;
+}
 
 export type InputType = BufferSource | Blob | ReadableStream<Uint8Array>;
 
-const readLocal = async (
+const readLocal = (
   view: Readonly<DataView>,
   o: number,
   csize: number,
   usize: number,
-  onlyNames: boolean,
-): Promise<
-  { name: string; size: number; csize: number } | {
-    name: string;
-    file: Uint8Array;
-  }
-> => {
+): Entry => {
   //   const sign = readUint(data, o);
   o += 4;
   //   const ver = readUshort(data, o);
@@ -112,14 +104,46 @@ const readLocal = async (
   o += nlen; //console.log(name);
   o += elen;
 
-  if (onlyNames) return { name, size: usize, csize };
-
   const file = new Uint8Array(view.buffer, view.byteOffset + o, csize);
   if (cmpr == 0) {
-    return { name, file: new Uint8Array(file) };
+    return makeEntry(name, csize, usize, file, true);
   } else if (cmpr == 8) {
-    return { name, file: await inflateRaw(file) };
+    return makeEntry(name, csize, usize, file, false);
   } else throw "unknown compression method: " + cmpr;
+};
+
+const makeEntry = (
+  name: string,
+  csize: number,
+  usize: number,
+  compressed: Uint8Array,
+  noCompression: boolean,
+): Entry => {
+  if (noCompression) {
+    return {
+      name,
+      csize,
+      usize,
+      arrayBuffer: () => Promise.resolve(compressed),
+      file: () => Promise.resolve(new File([compressed], name)),
+      text: () => Promise.resolve(new TextDecoder().decode(compressed)),
+    };
+  }
+
+  let decompressed: ArrayBuffer | undefined;
+  const decompress = async () => {
+    decompressed ??= await inflateRaw(compressed);
+    return decompressed;
+  };
+
+  return {
+    name,
+    csize,
+    usize,
+    arrayBuffer: decompress,
+    file: async () => new File([await decompress()], name),
+    text: async () => new TextDecoder().decode(await decompress()),
+  };
 };
 
 interface FileInZip {
@@ -187,16 +211,18 @@ export const encode = async (
   }
   const csize = o - ioff;
 
-  writeUint(data, o, 0x06054b50);
+  const view = new DataView(data.buffer);
+
+  view.setUint32(o, 0x06054b50, true);
   o += 4;
   o += 4; // disks
-  writeUshort(data, o, i);
+  view.setUint32(o, i, true);
   o += 2;
-  writeUshort(data, o, i);
+  view.setUint32(o, i, true);
   o += 2; // number of c d records
-  writeUint(data, o, csize);
+  view.setUint32(o, csize, true);
   o += 4;
-  writeUint(data, o, ioff);
+  view.setUint32(o, ioff, true);
   o += 4;
   o += 2;
   return data;
@@ -281,16 +307,14 @@ const update = (c: number, buf: Uint8Array, off: number, len: number) => {
   }
   return c;
 };
-const inflateRaw = async (
+const inflateRaw = (
   buffer: Blob | BufferSource | ReadableStream<Uint8Array>,
 ) =>
-  new Uint8Array(
-    await new Response(
-      new Response(buffer).body!.pipeThrough(
-        new DecompressionStream("deflate-raw"),
-      ),
-    ).arrayBuffer(),
-  );
+  new Response(
+    new Response(buffer).body!.pipeThrough(
+      new DecompressionStream("deflate-raw"),
+    ),
+  ).arrayBuffer();
 
 const deflateRaw = async (
   buffer: Blob | BufferSource | ReadableStream<Uint8Array>,
