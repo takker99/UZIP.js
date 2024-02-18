@@ -163,7 +163,7 @@ interface FileInZip {
 export const encode = async (
   files: Readonly<Record<string, InputType>>,
   noCompression?: boolean,
-): Promise<Uint8Array> => {
+): Promise<ArrayBuffer> => {
   noCompression ??= false;
   const zpd: Record<string, Promise<FileInZip>> = Object.fromEntries(
     [...Object.entries(files)].map(
@@ -193,25 +193,23 @@ export const encode = async (
   }
   tot += 22;
 
-  const data = new Uint8Array(tot);
+  const view = new DataView(new ArrayBuffer(tot));
   let o = 0;
   const fof = [];
 
   for (const p in zpd) {
     const file = zpd[p];
     fof.push(o);
-    o = writeHeader(data, o, p, await file, 0);
+    o = writeHeader(view, o, p, await file, 0);
   }
   let i = 0;
   const ioff = o;
   for (const p in zpd) {
     const file = zpd[p];
     fof.push(o);
-    o = writeHeader(data, o, p, await file, 1, fof[i++]);
+    o = writeHeader(view, o, p, await file, 1, fof[i++]);
   }
   const csize = o - ioff;
-
-  const view = new DataView(data.buffer);
 
   view.setUint32(o, 0x06054b50, true);
   o += 4;
@@ -225,7 +223,7 @@ export const encode = async (
   view.setUint32(o, ioff, true);
   o += 4;
   o += 2;
-  return data;
+  return view.buffer;
 };
 
 /** no need to compress .PNG, .ZIP, .JPEG ....*/
@@ -235,51 +233,52 @@ const noNeed = (fn: string) => {
 };
 
 const writeHeader = (
-  data: Uint8Array,
+  view: DataView,
   o: number,
   p: string,
   obj: FileInZip,
-  t: number,
+  t: 0 | 1,
   roff?: number,
 ) => {
   const file = obj.file;
 
-  writeUint(data, o, t == 0 ? 0x04034b50 : 0x02014b50);
+  view.setUint32(o, t == 0 ? 0x04034b50 : 0x02014b50, true);
   o += 4; // sign
   if (t == 1) o += 2; // ver made by
-  writeUshort(data, o, 20);
+  view.setUint16(o, 20, true);
   o += 2; // ver
-  writeUshort(data, o, 0);
+  view.setUint16(o, 0, true);
   o += 2; // gflip
-  writeUshort(data, o, obj.cpr ? 8 : 0);
+  view.setUint16(o, obj.cpr ? 8 : 0, true);
   o += 2; // cmpr
 
-  writeUint(data, o, 0);
+  view.setUint32(o, 0, true);
   o += 4; // time
-  writeUint(data, o, obj.crc);
+  view.setUint32(o, obj.crc, true);
   o += 4; // crc32
-  writeUint(data, o, file.length);
+  view.setUint32(o, file.length, true);
   o += 4; // csize
-  writeUint(data, o, obj.usize);
+  view.setUint32(o, obj.usize, true);
   o += 4; // usize
 
   const pBuf = new TextEncoder().encode(p);
-  writeUshort(data, o, pBuf.length);
+  view.setUint16(o, pBuf.length, true);
   o += 2; // nlen
-  writeUshort(data, o, 0);
+  view.setUint16(o, 0, true);
   o += 2; // elen
 
   if (t == 1) {
     o += 2; // comment length
     o += 2; // disk number
     o += 6; // attributes
-    writeUint(data, o, roff!);
+    view.setUint32(o, roff!, true);
     o += 4; // usize
   }
-  data.set(pBuf, o);
+  const buffer = new Uint8Array(view.buffer,view.byteOffset);
+  buffer.set(pBuf, o);
   o += pBuf.length;
   if (t == 0) {
-    data.set(file, o);
+    buffer.set(file, o);
     o += file.length;
   }
   return o;
@@ -326,14 +325,3 @@ const deflateRaw = async (
       ),
     ).arrayBuffer(),
   );
-
-const writeUshort = (buff: Uint8Array, p: number, n: number) => {
-  buff[p] = n & 255;
-  buff[p + 1] = (n >> 8) & 255;
-};
-const writeUint = (buff: Uint8Array, p: number, n: number) => {
-  buff[p] = n & 255;
-  buff[p + 1] = (n >> 8) & 255;
-  buff[p + 2] = (n >> 16) & 255;
-  buff[p + 3] = (n >> 24) & 255;
-};
