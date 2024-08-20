@@ -1,0 +1,5 @@
+{
+  "name": "@takker/zip",
+  "version": "0.0.0",
+  "exports": "./fflate/mod.ts"
+}

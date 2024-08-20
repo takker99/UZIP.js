@@ -1,0 +1,36 @@
+import { wbytes } from "./bytes.ts";
+import { adler } from "./crc.ts";
+import { type DeflateOptions, dopt } from "./deflateSync.ts";
+
+/**
+ * Options for compressing data into a Zlib format
+ */
+export interface ZlibOptions extends DeflateOptions {}
+
+/**
+ * Compress data with Zlib
+ * @param data The data to compress
+ * @param opts The compression options
+ * @returns The zlib-compressed version of the data
+ */
+
+export const zlibSync = (data: Uint8Array, opts?: ZlibOptions): Uint8Array => {
+  if (!opts) opts = {};
+  const a = adler();
+  a.p(data);
+  const d = dopt(data, opts, opts.dictionary ? 6 : 2, 4);
+  return zlh(d, opts), wbytes(d, d.length - 4, a.d()), d;
+};
+
+// zlib header
+export const zlh = (c: Uint8Array, o: ZlibOptions) => {
+  const lv = o.level ?? 0, fl = lv == 0 ? 0 : lv < 6 ? 1 : lv == 9 ? 3 : 2;
+  // @ts-ignore why?
+  c[0] = 120, c[1] = (fl << 6) | (o.dictionary && 32);
+  c[1] |= 31 - ((c[0] << 8) | c[1]) % 31;
+  if (o.dictionary) {
+    const h = adler();
+    h.p(o.dictionary);
+    wbytes(c, 2, h.d());
+  }
+};
