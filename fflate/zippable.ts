@@ -67,30 +67,30 @@ export interface ZipOptions extends DeflateOptions, ZipAttributes {}
 /**
  * A file that can be used to create a ZIP archive
  */
-export type ZippableFile = Uint8Array | Zippable | [
-  Uint8Array | Zippable,
-  ZipOptions,
+export type ZippableFile<O> = Uint8Array | Zippable<O> | [
+  Uint8Array | Zippable<O>,
+  O,
 ];
 
 /**
  * The complete directory structure of a ZIPpable archive
  */
-export interface Zippable {
-  [path: string]: ZippableFile;
+export interface Zippable<O = ZipOptions> {
+  [path: string]: ZippableFile<O>;
 }
 
 /** flattened Zippable */
-export interface FlatZippable {
-  [path: string]: [Uint8Array, ZipOptions];
+export interface FlatZippable<O = ZipOptions> {
+  [path: string]: [Uint8Array, O];
 }
 
 /** flatten a directory structure */
-export const flatten = (
-  directory: Zippable,
+export const flatten = <O>(
+  directory: Zippable<O>,
   path: string,
-  options: ZipOptions,
-): FlatZippable => {
-  let t: FlatZippable = {};
+  options: O,
+): FlatZippable<O> => {
+  let t: FlatZippable<O> = {};
   for (const k in directory) {
     let val = directory[k], n = path + k, op = options;
     if (Array.isArray(val)) {
@@ -99,7 +99,7 @@ export const flatten = (
     if (val instanceof u8) {
       t[n] = [val, op];
     } else {
-      t[n += "/"] = [new u8(0), op];
+      t[n += "/"] = [new u8(), op];
       t = mrg(t, flatten(val, n, options));
     }
   }
