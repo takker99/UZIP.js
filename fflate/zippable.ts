@@ -1,22 +1,7 @@
-import type { DeflateOptions } from "./deflateSync.ts";
+import type { DeflateOptions } from "./deflate.ts";
 import type { GzipOptions } from "./gzipSync.ts";
 import { mrg } from "./mrg.ts";
 import { u8 } from "./shorthands.ts";
-import type { UnzipOptions } from "./unzipSync.ts";
-
-// async callback-based compression
-interface AsyncOptions {
-  /**
-   * Whether or not to "consume" the source data. This will make the typed array/buffer you pass in
-   * unusable but will increase performance and reduce memory usage.
-   */
-  consume?: boolean;
-}
-
-/**
- * Options for compressing data asynchronously into a DEFLATE format
- */
-export interface AsyncDeflateOptions extends DeflateOptions, AsyncOptions {}
 
 /**
  * Attributes for files added to a ZIP archive object
@@ -79,17 +64,6 @@ export interface ZipAttributes {
  * Options for creating a ZIP archive
  */
 export interface ZipOptions extends DeflateOptions, ZipAttributes {}
-
-/**
- * Options for asynchronously creating a ZIP archive
- */
-export interface AsyncZipOptions extends AsyncDeflateOptions, ZipAttributes {}
-
-/**
- * Options for asynchronously expanding a ZIP archive
- */
-export interface AsyncUnzipOptions extends UnzipOptions {}
-
 /**
  * A file that can be used to create a ZIP archive
  */
@@ -99,59 +73,35 @@ export type ZippableFile = Uint8Array | Zippable | [
 ];
 
 /**
- * A file that can be used to asynchronously create a ZIP archive
- */
-export type AsyncZippableFile = Uint8Array | AsyncZippable | [
-  Uint8Array | AsyncZippable,
-  AsyncZipOptions,
-];
-
-/**
  * The complete directory structure of a ZIPpable archive
  */
 export interface Zippable {
   [path: string]: ZippableFile;
 }
 
-/**
- * The complete directory structure of an asynchronously ZIPpable archive
- */
-export interface AsyncZippable {
-  [path: string]: AsyncZippableFile;
+/** flattened Zippable */
+export interface FlatZippable {
+  [path: string]: [Uint8Array, ZipOptions];
 }
 
-/** flattened Zippable */
-export type FlatZippable<A extends boolean> = Record<
-  string,
-  [Uint8Array, (A extends true ? AsyncZipOptions : ZipOptions)]
->;
-
 /** flatten a directory structure */
-export const fltn = <
-  A extends boolean,
-  D = A extends true ? AsyncZippable : Zippable,
->(
-  d: D,
-  p: string,
-  t: FlatZippable<A>,
-  o: ZipOptions,
-) => {
-  for (const k in d) {
-    let val = d[k], n = p + k, op = o;
+export const flatten = (
+  directory: Zippable,
+  path: string,
+  options: ZipOptions,
+): FlatZippable => {
+  let t: FlatZippable = {};
+  for (const k in directory) {
+    let val = directory[k], n = path + k, op = options;
     if (Array.isArray(val)) {
-      op = mrg(o, val[1]),
-        val = val[0] as unknown as D[Extract<keyof D, string>];
+      op = mrg(options, val[1]), val = val[0];
     }
     if (val instanceof u8) {
-      t[n] = [val, op] as unknown as FlatZippable<A>[string];
+      t[n] = [val, op];
     } else {
-      t[n += "/"] = [new u8(0), op] as unknown as FlatZippable<A>[string];
-      fltn(
-        val as unknown as (A extends true ? AsyncZippable : Zippable),
-        n,
-        t,
-        o,
-      );
+      t[n += "/"] = [new u8(0), op];
+      t = mrg(t, flatten(val, n, options));
     }
   }
+  return t;
 };

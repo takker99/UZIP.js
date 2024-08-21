@@ -1,24 +1,30 @@
+export const UnexpectedEOF = 0;
+export const InvalidBlockType = 1;
+export const InvalidLengthLiteral = 2;
+export const InvalidDistance = 3;
+export const InvalidHeader = 4;
+export const ExtraFieldTooLong = 5;
+export const InvalidDate = 6;
+export const FilenameTooLong = 7;
+/** caused when the zip data doesn't have the end of central directory signature */
+export const InvalidZipData = 7;
+export const UnknownCompressionMethod = 9;
+
 /**
  * Codes for errors generated within this library
  */
 
-export const FlateErrorCode = {
-  UnexpectedEOF: 0,
-  InvalidBlockType: 1,
-  InvalidLengthLiteral: 2,
-  InvalidDistance: 3,
-  StreamFinished: 4,
-  NoStreamHandler: 5,
-  InvalidHeader: 6,
-  NoCallback: 7,
-  InvalidUTF8: 8,
-  ExtraFieldTooLong: 9,
-  InvalidDate: 10,
-  FilenameTooLong: 11,
-  StreamFinishing: 12,
-  InvalidZipData: 13,
-  UnknownCompressionMethod: 14,
-} as const;
+export type flateErrorCode =
+  | typeof UnexpectedEOF
+  | typeof InvalidBlockType
+  | typeof InvalidLengthLiteral
+  | typeof InvalidDistance
+  | typeof InvalidHeader
+  | typeof ExtraFieldTooLong
+  | typeof InvalidDate
+  | typeof FilenameTooLong
+  | typeof InvalidZipData
+  | typeof UnknownCompressionMethod;
 
 /** error codes */
 export const ec = [
@@ -26,18 +32,14 @@ export const ec = [
   "invalid block type",
   "invalid length/literal",
   "invalid distance",
-  "stream finished",
-  "no stream handler",
   , // determined by compression function
-  "no callback",
-  "invalid UTF-8 data",
   "extra field too long",
   "date not in range 1980-2099",
   "filename too long",
-  "stream finishing",
   "invalid zip data",
+  ,
   // determined by unknown compression method
-];
+] as const;
 
 /**
  * An error generated within this library
@@ -46,13 +48,15 @@ export interface FlateError extends Error {
   /**
    * The code associated with this error
    */
-  code: number;
+  code: flateErrorCode;
 }
 
-export const err = (ind: number, msg?: string | 0, nt?: 1): FlateError => {
-  const e: Partial<FlateError> = new Error(msg || ec[ind]);
+export const err = (
+  ind: flateErrorCode,
+  msg?: string,
+): FlateError => {
+  const e = new Error(msg ?? ec[ind]) as Partial<FlateError>;
   e.code = ind;
   if (Error.captureStackTrace) Error.captureStackTrace(e, err);
-  if (!nt) throw e;
   return e as FlateError;
 };

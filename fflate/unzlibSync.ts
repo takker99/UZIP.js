@@ -1,5 +1,5 @@
-import { type InflateOptions, inflt } from "./inflateSync.ts";
-import { err } from "./error.ts";
+import { type InflateOptions, inflt } from "./inflate.ts";
+import { err, InvalidHeader } from "./error.ts";
 
 /**
  * Options for decompressing Zlib data
@@ -23,15 +23,14 @@ export const unzlibSync = (
     opts && opts.dictionary,
   );
 
-
 /** zlib start */
-export const zls = (d: Uint8Array, dict?: unknown) => {
+export const zls = (d: Uint8Array, dict?: unknown): number => {
   if ((d[0] & 15) != 8 || (d[0] >> 4) > 7 || ((d[0] << 8 | d[1]) % 31)) {
-    err(6, "invalid zlib data");
+    err(InvalidHeader, "invalid zlib data");
   }
   if ((d[1] >> 5 & 1) == +!dict) {
     err(
-      6,
+      InvalidHeader,
       "invalid zlib data: " + (d[1] & 32 ? "need" : "unexpected") +
         " dictionary",
     );

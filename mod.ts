@@ -274,7 +274,7 @@ const writeHeader = (
     view.setUint32(o, roff!, true);
     o += 4; // usize
   }
-  const buffer = new Uint8Array(view.buffer,view.byteOffset);
+  const buffer = new Uint8Array(view.buffer, view.byteOffset);
   buffer.set(pBuf, o);
   o += pBuf.length;
   if (t == 0) {

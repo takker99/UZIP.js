@@ -1,9 +1,21 @@
-import { bits, bits16, shft, slc } from "./bytes.ts";
-import { flrm, fdrm, clim, hMap, fleb, fl, fd, fdeb } from "./constants.ts";
-import { err } from "./error.ts";
+import { bits, bits16, shft } from "./bytes.ts";
+import {
+  codeLengthIndexMap,
+  fd,
+  fixedDistanceExtraBits,
+  fixedLengthExtraBits,
+  fl,
+} from "./constants.ts";
+import { fdrm, flrm, hMap } from "./huffman-tree.ts";
+import {
+  err,
+  InvalidBlockType,
+  InvalidDistance,
+  InvalidLengthLiteral,
+  UnexpectedEOF,
+} from "./error.ts";
 import { max } from "./max.ts";
 import { u8 } from "./shorthands.ts";
-
 
 /**
  * Options for decompressing a DEFLATE stream
@@ -35,7 +47,7 @@ export interface InflateOptions extends InflateStreamOptions {
  * @param opts The decompression options
  * @returns The decompressed version of the data
  */
-export const inflateSync = (
+export const inflate = (
   data: Uint8Array,
   opts?: InflateOptions,
 ): Uint8Array =>
@@ -110,7 +122,7 @@ export const inflt = (
         // go to end of byte boundary
         const s = shft(pos) + 4, l = dat[s - 4] | (dat[s - 3] << 8), t = s + l;
         if (t > sl) {
-          if (noSt) err(0);
+          if (noSt) err(UnexpectedEOF);
           break;
         }
         // ensure size
@@ -133,7 +145,7 @@ export const inflt = (
         const clt = new u8(19);
         for (let i = 0; i < hcLen; ++i) {
           // use index map to get real code
-          clt[clim[i]] = bits(dat, pos + i * 3, 7);
+          clt[codeLengthIndexMap[i]] = bits(dat, pos + i * 3, 7);
         }
         pos += hcLen * 3;
         // code lengths bits
@@ -166,9 +178,9 @@ export const inflt = (
         dbt = max(dt);
         lm = hMap(lt, lbt, 1);
         dm = hMap(dt, dbt, 1);
-      } else err(1);
+      } else err(InvalidBlockType);
       if (pos > tbts) {
-        if (noSt) err(0);
+        if (noSt) err(UnexpectedEOF);
         break;
       }
     }
@@ -182,10 +194,10 @@ export const inflt = (
       const c = lm![bits16(dat, pos) & lms], sym = c >> 4;
       pos += c & 15;
       if (pos > tbts) {
-        if (noSt) err(0);
+        if (noSt) err(UnexpectedEOF);
         break;
       }
-      if (!c) err(2);
+      if (!c) err(InvalidLengthLiteral);
       if (sym < 256) buf[bt++] = sym;
       else if (sym == 256) {
         lpos = pos, lm = undefined;
@@ -195,28 +207,28 @@ export const inflt = (
         // no extra bits needed if less
         if (sym > 264) {
           // index
-          const i = sym - 257, b = fleb[i];
+          const i = sym - 257, b = fixedLengthExtraBits[i];
           add = bits(dat, pos, (1 << b) - 1) + fl[i];
           pos += b;
         }
         // dist
         const d = dm![bits16(dat, pos) & dms], dsym = d >> 4;
-        if (!d) err(3);
+        if (!d) err(InvalidDistance);
         pos += d & 15;
         let dt = fd[dsym];
         if (dsym > 3) {
-          const b = fdeb[dsym];
+          const b = fixedDistanceExtraBits[dsym];
           dt += bits16(dat, pos) & (1 << b) - 1, pos += b;
         }
         if (pos > tbts) {
-          if (noSt) err(0);
+          if (noSt) err(UnexpectedEOF);
           break;
         }
         if (resize) cbuf(bt + 131072);
         const end = bt + add;
         if (bt < dt) {
           const shift = dl - dt, dend = Math.min(dt, end);
-          if (shift + bt < 0) err(3);
+          if (shift + bt < 0) err(InvalidDistance);
           for (; bt < dend; ++bt) buf[bt] = dict![shift + bt];
         }
         for (; bt < end; ++bt) buf[bt] = buf[bt - dt];
@@ -226,5 +238,5 @@ export const inflt = (
     if (lm) final = 1, st.m = lbt, st.d = dm, st.n = dbt;
   } while (!final);
   // don't reallocate for streams or user buffers
-  return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
+  return bt != buf.length && noBuf ? buf.slice(0, bt) : buf.subarray(0, bt);
 };

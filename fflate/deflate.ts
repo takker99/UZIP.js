@@ -1,16 +1,12 @@
-import { shft, slc, wbits, wbits16 } from "./bytes.ts";
+import { shft, wbits, wbits16 } from "./bytes.ts";
 import {
-  clim,
-  fdeb,
-  fdm,
-  fdt,
-  fleb,
-  flm,
-  flt,
-  hMap,
+  codeLengthIndexMap,
+  fixedDistanceExtraBits,
+  fixedLengthExtraBits,
   revfd,
   revfl,
 } from "./constants.ts";
+import { clen, fdm, fdt, flm, flt, hMap, hTree, lc } from "./huffman-tree.ts";
 import { i32, u16, u8 } from "./shorthands.ts";
 
 export type DeflateState = {
@@ -79,7 +75,7 @@ export interface DeflateOptions {
  * @param opts The compression options
  * @returns The deflated version of the data
  */
-export const deflateSync = (
+export const deflate = (
   data: Uint8Array,
   opts?: DeflateOptions,
 ): Uint8Array => dopt(data, opts || {}, 0, 0);
@@ -91,7 +87,7 @@ export const dopt = (
   pre: number,
   post: number,
   st?: DeflateState,
-) => {
+): Uint8Array => {
   if (!st) {
     st = { l: 1 };
     if (opt.dictionary) {
@@ -207,7 +203,7 @@ const dflt = (
           // Make sure this is recognized as a len/dist with 28th bit (2^28)
           syms[li++] = 268435456 | (revfl[l] << 18) | revfd[d];
           const lin = revfl[l] & 31, din = revfd[d] & 31;
-          eb += fleb[lin] + fdeb[din];
+          eb += fixedLengthExtraBits[lin] + fixedDistanceExtraBits[din];
           ++lf[257 + lin];
           ++df[din];
           wi = i + l;
@@ -242,7 +238,7 @@ const dflt = (
     }
     st.i = s;
   }
-  return slc(o, 0, pre + shft(pos) + post);
+  return o.slice(0, pre + shft(pos) + post);
 };
 
 // deflate options (nice << 13) | chain
@@ -257,9 +253,6 @@ const deo = /*#__PURE__*/ new i32([
   2114560,
   2117632,
 ]);
-
-/** empty */
-const et = /*#__PURE__*/ new u8(0);
 
 /** writes a fixed block
  *
@@ -302,7 +295,7 @@ const wblk = (
   for (let i = 0; i < lcdt.length; ++i) ++lcfreq[lcdt[i] & 31];
   const { t: lct, l: mlcb } = hTree(lcfreq, 7);
   let nlcc = 19;
-  for (; nlcc > 4 && !lct[clim[nlcc - 1]]; --nlcc);
+  for (; nlcc > 4 && !lct[codeLengthIndexMap[nlcc - 1]]; --nlcc);
   const flen = (bl + 5) << 3;
   const ftlen = clen(lf, flt) + clen(df, fdt) + eb;
   const dtlen = clen(lf, dlt) + clen(df, ddt) + eb + 14 + 3 * nlcc +
@@ -319,7 +312,9 @@ const wblk = (
     wbits(out, p + 5, ndc - 1);
     wbits(out, p + 10, nlcc - 4);
     p += 14;
-    for (let i = 0; i < nlcc; ++i) wbits(out, p + 3 * i, lct[clim[i]]);
+    for (let i = 0; i < nlcc; ++i) {
+      wbits(out, p + 3 * i, lct[codeLengthIndexMap[i]]);
+    }
     p += 3 * nlcc;
     const lcts = [lclt, lcdt];
     for (let it = 0; it < 2; ++it) {
@@ -338,144 +333,18 @@ const wblk = (
     if (sym > 255) {
       const len = (sym >> 18) & 31;
       wbits16(out, p, lm[len + 257]), p += ll[len + 257];
-      if (len > 7) wbits(out, p, (sym >> 23) & 31), p += fleb[len];
+      if (len > 7) {
+        wbits(out, p, (sym >> 23) & 31), p += fixedLengthExtraBits[len];
+      }
       const dst = sym & 31;
       wbits16(out, p, dm[dst]), p += dl[dst];
-      if (dst > 3) wbits16(out, p, (sym >> 5) & 8191), p += fdeb[dst];
+      if (dst > 3) {
+        wbits16(out, p, (sym >> 5) & 8191), p += fixedDistanceExtraBits[dst];
+      }
     } else {
       wbits16(out, p, lm[sym]), p += ll[sym];
     }
   }
   wbits16(out, p, lm[256]);
   return p + ll[256];
-};
-
-type HuffNode = {
-  // symbol
-  s: number;
-  // frequency
-  f: number;
-  // left child
-  l?: HuffNode;
-  // right child
-  r?: HuffNode;
-};
-
-// creates code lengths from a frequency table
-const hTree = (d: Uint16Array, mb: number) => {
-  // Need extra info to make a tree
-  const t: HuffNode[] = [];
-  for (let i = 0; i < d.length; ++i) {
-    if (d[i]) t.push({ s: i, f: d[i] });
-  }
-  const s = t.length;
-  const t2 = t.slice();
-  if (!s) return { t: et, l: 0 };
-  if (s == 1) {
-    const v = new u8(t[0].s + 1);
-    v[t[0].s] = 1;
-    return { t: v, l: 1 };
-  }
-  t.sort((a, b) => a.f - b.f);
-  // after i2 reaches last ind, will be stopped
-  // freq must be greater than largest possible number of symbols
-  t.push({ s: -1, f: 25001 });
-  let l = t[0], r = t[1], i0 = 0, i1 = 1, i2 = 2;
-  t[0] = { s: -1, f: l.f + r.f, l, r };
-  // efficient algorithm from UZIP.js
-  // i0 is lookbehind, i2 is lookahead - after processing two low-freq
-  // symbols that combined have high freq, will start processing i2 (high-freq,
-  // non-composite) symbols instead
-  // see https://reddit.com/r/photopea/comments/ikekht/uzipjs_questions/
-  while (i1 != s - 1) {
-    l = t[t[i0].f < t[i2].f ? i0++ : i2++];
-    r = t[i0 != i1 && t[i0].f < t[i2].f ? i0++ : i2++];
-    t[i1++] = { s: -1, f: l.f + r.f, l, r };
-  }
-  let maxSym = t2[0].s;
-  for (let i = 1; i < s; ++i) {
-    if (t2[i].s > maxSym) maxSym = t2[i].s;
-  }
-  // code lengths
-  const tr = new u16(maxSym + 1);
-  // max bits in tree
-  let mbt = ln(t[i1 - 1], tr, 0);
-  if (mbt > mb) {
-    // more algorithms from UZIP.js
-    // TODO: find out how this code works (debt)
-    //  ind    debt
-    let i = 0, dt = 0;
-    //    left            cost
-    const lft = mbt - mb, cst = 1 << lft;
-    t2.sort((a, b) => tr[b.s] - tr[a.s] || a.f - b.f);
-    for (; i < s; ++i) {
-      const i2 = t2[i].s;
-      if (tr[i2] > mb) {
-        dt += cst - (1 << (mbt - tr[i2]));
-        tr[i2] = mb;
-      } else break;
-    }
-    dt >>= lft;
-    while (dt > 0) {
-      const i2 = t2[i].s;
-      if (tr[i2] < mb) dt -= 1 << (mb - tr[i2]++ - 1);
-      else ++i;
-    }
-    for (; i >= 0 && dt; --i) {
-      const i2 = t2[i].s;
-      if (tr[i2] == mb) {
-        --tr[i2];
-        ++dt;
-      }
-    }
-    mbt = mb;
-  }
-  return { t: new u8(tr), l: mbt };
-};
-// get the max length and assign length codes
-const ln = (n: HuffNode, l: Uint16Array, d: number): number => {
-  return n.s == -1
-    ? Math.max(ln(n.l!, l, d + 1), ln(n.r!, l, d + 1))
-    : (l[n.s] = d);
-};
-
-// length codes generation
-const lc = (c: Uint8Array) => {
-  let s = c.length;
-  // Note that the semicolon was intentional
-  while (s && !c[--s]);
-  const cl = new u16(++s);
-  //  ind      num         streak
-  let cli = 0, cln = c[0], cls = 1;
-  const w = (v: number) => {
-    cl[cli++] = v;
-  };
-  for (let i = 1; i <= s; ++i) {
-    if (c[i] == cln && i != s) {
-      ++cls;
-    } else {
-      if (!cln && cls > 2) {
-        for (; cls > 138; cls -= 138) w(32754);
-        if (cls > 2) {
-          w(cls > 10 ? ((cls - 11) << 5) | 28690 : ((cls - 3) << 5) | 12305);
-          cls = 0;
-        }
-      } else if (cls > 3) {
-        w(cln), --cls;
-        for (; cls > 6; cls -= 6) w(8304);
-        if (cls > 2) w(((cls - 3) << 5) | 8208), cls = 0;
-      }
-      while (cls--) w(cln);
-      cls = 1;
-      cln = c[i];
-    }
-  }
-  return { c: cl.subarray(0, cli), n: s };
-};
-
-// calculate the length of output from tree, code lengths
-const clen = (cf: Uint16Array, cl: Uint8Array) => {
-  let l = 0;
-  for (let i = 0; i < cl.length; ++i) l += cf[i] * cl[i];
-  return l;
 };

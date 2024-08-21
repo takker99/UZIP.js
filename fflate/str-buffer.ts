@@ -1,4 +1,6 @@
-import { td, te, u8 } from "./shorthands.ts";
+import { u8 } from "./shorthands.ts";
+
+const te = /*#__PURE__*/ new TextEncoder();
 
 /**
  * Converts a string into a Uint8Array for use with compression/decompression methods
@@ -8,7 +10,7 @@ import { td, te, u8 } from "./shorthands.ts";
  * @returns The string encoded in UTF-8/Latin-1 binary
  */
 
-export const strToU8 = (str: string, latin1?: boolean): Uint8Array => {
+export const encode = (str: string, latin1?: boolean): Uint8Array => {
   if (latin1) {
     const ar = new u8(str.length);
     for (let i = 0; i < str.length; ++i) ar[i] = str.charCodeAt(i);
@@ -16,6 +18,9 @@ export const strToU8 = (str: string, latin1?: boolean): Uint8Array => {
   }
   return te.encode(str);
 };
+
+const td = /*#__PURE__*/ new TextDecoder();
+
 /**
  * Converts a Uint8Array to a string
  * @param dat The data to decode to string
@@ -24,7 +29,7 @@ export const strToU8 = (str: string, latin1?: boolean): Uint8Array => {
  * @returns The original UTF-8/Latin-1 string
  */
 
-export const strFromU8 = (dat: Uint8Array, latin1?: boolean): string => {
+export const decode = (dat: Uint8Array, latin1?: boolean): string => {
   if (latin1) {
     let r = "";
     for (let i = 0; i < dat.length; i += 16384) {
