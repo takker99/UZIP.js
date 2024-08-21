@@ -1,5 +1,5 @@
 import type { DeflateOptions } from "./deflate.ts";
-import type { GzipOptions } from "./gzipSync.ts";
+import type { GzipOptions } from "./gzip.ts";
 import { mrg } from "./mrg.ts";
 import { u8 } from "./shorthands.ts";
 

@@ -21,7 +21,7 @@ export interface GunzipOptions extends InflateStreamOptions {
  * @returns The decompressed version of the data
  */
 
-export const gunzipSync = (
+export const gunzip = (
   data: Uint8Array,
   opts?: GunzipOptions,
 ): Uint8Array => {

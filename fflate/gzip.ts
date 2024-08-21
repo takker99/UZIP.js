@@ -25,7 +25,7 @@ export interface GzipOptions extends DeflateOptions {
  * @returns The gzipped version of the data
  */
 
-export const gzipSync = (data: Uint8Array, opts?: GzipOptions): Uint8Array => {
+export const gzip = (data: Uint8Array, opts?: GzipOptions): Uint8Array => {
   if (!opts) opts = {};
   const c = crcTs.crc32(data), l = data.length;
   const d = dopt(data, opts, gzhl(opts), 8), s = d.length;

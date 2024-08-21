@@ -275,7 +275,7 @@ const table = new Int32Array(
 Deno.test("crc32", async (t) => {
   await t.step("check table", () => {
     assertEquals(CRC32Table.length, 256);
-  assertEquals(table.buffer, CRC32Table.buffer);
+    assertEquals(table.buffer, CRC32Table.buffer);
   });
   await t.step("empty data", () => {
     assertEquals(crc32(new Uint8Array([])), 0);

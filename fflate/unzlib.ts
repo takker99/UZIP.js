@@ -12,7 +12,7 @@ export interface UnzlibOptions extends InflateOptions {}
  * @param opts The decompression options
  * @returns The decompressed version of the data
  */
-export const unzlibSync = (
+export const unzlib = (
   data: Uint8Array,
   opts?: UnzlibOptions,
 ): Uint8Array =>

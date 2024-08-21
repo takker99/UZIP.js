@@ -14,7 +14,7 @@ export interface ZlibOptions extends DeflateOptions {}
  * @returns The zlib-compressed version of the data
  */
 
-export const zlibSync = (data: Uint8Array, opts?: ZlibOptions): Uint8Array => {
+export const zlib = (data: Uint8Array, opts?: ZlibOptions): Uint8Array => {
   if (!opts) opts = {};
   const a = alder32(data);
   const d = dopt(data, opts, opts.dictionary ? 6 : 2, 4);
