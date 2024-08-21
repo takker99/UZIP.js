@@ -13,7 +13,7 @@ import {
   type Zippable,
 } from "./zippable.ts";
 import { deflate } from "./deflate.ts";
-import * as crcTs from "./crc32.ts";
+import { crc32 } from "./crc32.ts";
 import { u8 } from "./shorthands.ts";
 import { setUint } from "./bytes.ts";
 import { END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE } from "./constants.ts";
@@ -44,7 +44,7 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
     const l = buffer.length;
     files.push(mrg(p, {
       size: file.length,
-      crc: crcTs.crc32(file),
+      crc: crc32(file),
       c: buffer,
       f: encodedFileName,
       m: encodedComment,

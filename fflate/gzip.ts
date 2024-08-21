@@ -1,5 +1,5 @@
 import { setUint } from "./bytes.ts";
-import * as crcTs from "./crc32.ts";
+import { crc32 } from "./crc32.ts";
 import { type DeflateOptions, dopt } from "./deflate.ts";
 
 /** Options for compressing data into a GZIP format */
@@ -24,7 +24,7 @@ export interface GzipOptions extends DeflateOptions {
  */
 export const gzip = (data: Uint8Array, opts?: GzipOptions): Uint8Array => {
   if (!opts) opts = {};
-  const c = crcTs.crc32(data), l = data.length;
+  const c = crc32(data), l = data.length;
   const d = dopt(data, opts, gzhl(opts), 8), s = d.length;
   return gzh(d, opts), setUint(d, s - 8, c), setUint(d, s - 4, l), d;
 };
