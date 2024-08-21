@@ -22,7 +22,7 @@ export const zlib = (data: Uint8Array, opts?: ZlibOptions): Uint8Array => {
 };
 
 /** zlib header */
-export const zlh = (c: Uint8Array, o: ZlibOptions): void => {
+const zlh = (c: Uint8Array, o: ZlibOptions): void => {
   const lv = o.level ?? 0, fl = lv == 0 ? 0 : lv < 6 ? 1 : lv == 9 ? 3 : 2;
   // @ts-ignore why?
   c[0] = 120, c[1] = (fl << 6) | (o.dictionary && 32);

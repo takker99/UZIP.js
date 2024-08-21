@@ -24,7 +24,7 @@ export const unzlib = (
   );
 
 /** zlib start */
-export const zls = (d: Uint8Array, dict?: unknown): number => {
+const zls = (d: Uint8Array, dict?: unknown): number => {
   if ((d[0] & 15) != 8 || (d[0] >> 4) > 7 || ((d[0] << 8 | d[1]) % 31)) {
     err(InvalidHeader, "invalid zlib data");
   }

@@ -37,7 +37,7 @@ export const gunzip = (
 // gzip footer: -8 to -4 = CRC, -4 to -0 is length
 // gzip start
 
-export const gzs = (d: Uint8Array): number => {
+const gzs = (d: Uint8Array): number => {
   if (d[0] != 31 || d[1] != 139 || d[2] != 8) {
     err(InvalidHeader, "invalid gzip data");
   }
@@ -51,9 +51,9 @@ export const gzs = (d: Uint8Array): number => {
   );
   return st + (flg & 2);
 };
-// gzip length
 
-export const gzl = (d: Uint8Array): number => {
+// gzip length
+const gzl = (d: Uint8Array): number => {
   const l = d.length;
   return (d[l - 4] | d[l - 3] << 8 | d[l - 2] << 16 | d[l - 1] << 24) >>> 0;
 };

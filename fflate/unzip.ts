@@ -14,6 +14,10 @@ import {
  * and the file is the value
  */
 export interface Unzipped {
+  /** The files in the archive
+   *
+   * Each key is the full path of the file, and the value is the file itself.
+   */
   [path: string]: Uint8Array;
 }
 
@@ -53,14 +57,6 @@ export interface UnzipFileInfo {
 export type UnzipFileFilter = (file: UnzipFileInfo) => boolean;
 
 /**
- * Synchronously decompresses a ZIP archive. Prefer using `unzip` for better
- * performance with more than one file.
- * @param data The raw compressed ZIP file
- * @param opts The ZIP extraction options
- * @returns The decompressed files
- */
-
-/**
  * Options for expanding a ZIP archive
  */
 export interface UnzipOptions {
@@ -70,6 +66,13 @@ export interface UnzipOptions {
   filter?: UnzipFileFilter;
 }
 
+/**
+ * Synchronously decompresses a ZIP archive. Prefer using `unzip` for better
+ * performance with more than one file.
+ * @param data The raw compressed ZIP file
+ * @param opts The ZIP extraction options
+ * @returns The decompressed files
+ */
 export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
   const files: Unzipped = {};
   let e = data.length - MIN_END_OF_CENTRAL_DIRECTORY_SIZE;
