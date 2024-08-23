@@ -51,7 +51,7 @@ export const inflate = (
   data: Uint8Array,
   opts?: InflateOptions,
 ): Uint8Array =>
-  inflt(data, { i: 2 }, opts && opts.out, opts && opts.dictionary);
+  inflt(data, { i: 2 }, opts?.out, opts?.dictionary);
 
 // inflate state
 export type InflateState = {

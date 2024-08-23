@@ -78,7 +78,7 @@ export interface DeflateOptions {
 export const deflate = (
   data: Uint8Array,
   opts?: DeflateOptions,
-): Uint8Array => dopt(data, opts || {}, 0, 0);
+): Uint8Array => dopt(data, opts ?? {}, 0, 0);
 
 /** deflate with opts */
 export const dopt = (
