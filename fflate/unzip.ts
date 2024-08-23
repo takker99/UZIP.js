@@ -1,4 +1,4 @@
-import { inflate } from "./inflate.ts";
+import type { InflateOptions } from "./inflate.ts";
 import { err, InvalidZipData, UnknownCompressionMethod } from "./error.ts";
 import { getUint16, getUint32, getUint64 } from "./bytes.ts";
 import { u8 } from "./shorthands.ts";
@@ -65,6 +65,14 @@ export interface UnzipOptions {
    * A filter function to extract only certain files from a ZIP archive
    */
   filter?: UnzipFileFilter;
+
+  /** DEFLATE data expander
+   *
+   * @param data The data to decompress
+   * @param opts The decompression options
+   * @returns The decompressed version of the data
+   */
+  inflate?: (data: Uint8Array, opts?: InflateOptions) => Uint8Array;
 }
 
 /**
@@ -153,12 +161,13 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
       continue;
     }
     const fileDataOffset = getFileDataOffset(data, localFileHeaderOffset);
+    const inflate = opts?.inflate;
     if (!compressionMethod) {
       files[fileName] = data.slice(
         fileDataOffset,
         fileDataOffset + compressedSize,
       );
-    } else if (compressionMethod == 8) {
+    } else if (compressionMethod == 8 && inflate) {
       files[fileName] = inflate(
         data.subarray(fileDataOffset, fileDataOffset + compressedSize),
         { out: new u8(uncompressedSize) },

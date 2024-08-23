@@ -58,6 +58,14 @@ export interface ZipAttributes {
    * When the file was last modified. Defaults to the current time.
    */
   mtime?: GzipOptions["mtime"];
+
+  /** DEFLATE data compresser
+   *
+   * @param data The data to compress
+   * @param opts The compression options
+   * @returns The deflated version of the data
+   */
+  deflate?: (data: Uint8Array, options?: DeflateOptions) => Uint8Array;
 }
 
 /**

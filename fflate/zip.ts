@@ -4,6 +4,7 @@ import {
   ExtraFieldTooLong,
   FilenameTooLong,
   InvalidDate,
+  UnknownCompressionMethod,
 } from "./error.ts";
 import { mrg } from "./mrg.ts";
 import {
@@ -12,7 +13,6 @@ import {
   type ZipOptions,
   type Zippable,
 } from "./zippable.ts";
-import { deflate } from "./deflate.ts";
 import { crc32 } from "@takker/crc";
 import { u8 } from "./shorthands.ts";
 import { setUint } from "./bytes.ts";
@@ -43,11 +43,12 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
     const comment = p.comment;
     const encodedComment = comment ? encode(comment) : undefined;
     const encodedCommentLength = encodedComment?.length;
-    const fileData = compression ? deflate(file, p) : file;
+    const fileData = compression ? p.deflate?.(file, p) : file;
+    if (!fileData) err(UnknownCompressionMethod);
     files.push(mrg(p, {
       size: file.length,
       crc: crc32(file),
-      c: fileData,
+      c: fileData!,
       f: encodedFileName,
       m: encodedComment,
       u: encodedFileNameLength != fileName.length ||
@@ -57,7 +58,7 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
     }));
 
     const exl = extraFieldLength(p.extra);
-    const l = fileData.length;
+    const l = fileData!.length;
 
     // add the size of the local file header
     o += MIN_LOCAL_FILE_HEADER_SIZE +

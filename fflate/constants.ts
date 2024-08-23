@@ -1,6 +1,6 @@
 import { i32, u16, u8 } from "./shorthands.ts";
 
-export const fixedLengthExtraBits = new u8([
+export const fixedLengthExtraBits = /*#__PURE__*/ new u8([
   0,
   0,
   0,
@@ -35,7 +35,7 @@ export const fixedLengthExtraBits = new u8([
   /* impossible */ 0,
 ]);
 
-export const fixedDistanceExtraBits = new u8([
+export const fixedDistanceExtraBits = /*#__PURE__*/ new u8([
   0,
   0,
   0,
@@ -70,7 +70,7 @@ export const fixedDistanceExtraBits = new u8([
   0,
 ]);
 
-export const codeLengthIndexMap = new u8([
+export const codeLengthIndexMap = /*#__PURE__*/ new u8([
   16,
   17,
   18,
@@ -92,12 +92,21 @@ export const codeLengthIndexMap = new u8([
   15,
 ]);
 
-// get base, reverse index map from extra bits
-const freb = (eb: Uint8Array, start: number) => {
+/** get base index map from extra bits */
+const fb = (eb: Uint8Array, start: 1 | 2) => {
   const b = new u16(31);
+  let s = start;
   for (let i = 0; i < 31; ++i) {
-    b[i] = start += 1 << eb[i - 1];
+    b[i] = s += 1 << eb[i - 1];
   }
+
+  // we can ignore the fact that the other numbers are wrong; they never happen anyway
+  if (start === 2) b[28] = 258;
+  return b;
+};
+
+/** get reverse index map from extra bits */
+const fre = (b: Uint16Array) => {
   // numbers here are at max 18 bits
   const r = new i32(b[30]);
   for (let i = 1; i < 30; ++i) {
@@ -105,13 +114,13 @@ const freb = (eb: Uint8Array, start: number) => {
       r[j] = ((j - b[i]) << 5) | i;
     }
   }
-  return [b, r];
+  return r;
 };
 
-export const [fl, revfl] = /*#__PURE__*/ freb(fixedLengthExtraBits, 2);
-// we can ignore the fact that the other numbers are wrong; they never happen anyway
-fl[28] = 258, revfl[258] = 28;
-export const [fd, revfd] = /*#__PURE__*/ freb(fixedDistanceExtraBits, 0);
+export const fl = /*#__PURE__*/ fb(fixedLengthExtraBits, 2);
+export const revfl = /*#__PURE__*/ fre(fl);
+export const fd = /*#__PURE__*/ fb(fixedDistanceExtraBits, 1);
+export const revfd = /*#__PURE__*/ fre(fd);
 
 export const END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE = 0x6054b50;
 export const ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE = 0x6064b50;
