@@ -16,7 +16,11 @@ import { deflate } from "./deflate.ts";
 import { crc32 } from "@takker/crc";
 import { u8 } from "./shorthands.ts";
 import { setUint } from "./bytes.ts";
-import { END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE } from "./constants.ts";
+import {
+  END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE,
+  MIN_END_OF_CENTRAL_DIRECTORY_SIZE,
+  MIN_LOCAL_FILE_HEADER_SIZE,
+} from "./constants.ts";
 
 /**
  * Synchronously creates a ZIP file. Prefer using `zip` for better performance
@@ -28,7 +32,9 @@ import { END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE } from "./constants.ts";
 export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
   const r = flatten(data, "", opts ?? {});
   const files: ZipData[] = [];
+  /** The offset of the next local file header */
   let o = 0;
+  /** The total size of central directory file headers and local file headers */
   let tot = 0;
   for (const fileName in r) {
     const [file, p] = r[fileName];
@@ -38,32 +44,55 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
     if (encodedFileNameLength > 0xffff) err(FilenameTooLong);
     const comment = p.comment;
     const encodedComment = comment ? encode(comment) : undefined;
-    const ms = encodedComment?.length;
-    const exl = extraFieldLength(p.extra);
-    const buffer = compression ? deflate(file, p) : file;
-    const l = buffer.length;
+    const encodedCommentLength = encodedComment?.length;
+    const fileData = compression ? deflate(file, p) : file;
     files.push(mrg(p, {
       size: file.length,
       crc: crc32(file),
-      c: buffer,
+      c: fileData,
       f: encodedFileName,
       m: encodedComment,
       u: encodedFileNameLength != fileName.length ||
-        (encodedComment != undefined && (comment?.length != ms)),
+        (!!encodedComment && (comment?.length != encodedCommentLength)),
       o,
       compression,
     }));
-    o += 30 + encodedFileNameLength + exl + l;
-    tot += 76 + 2 * (encodedFileNameLength + exl) + (ms ?? 0) + l;
+
+    const exl = extraFieldLength(p.extra);
+    const l = fileData.length;
+
+    // add the size of the local file header
+    o += MIN_LOCAL_FILE_HEADER_SIZE +
+      encodedFileNameLength + // file name length
+      exl + // extra field length
+      l; // file data length
+
+    // add the size of the central directory file header and the local file header
+    tot += 76 + // total minimum bytes required for a central directory file header (46 bytes) and a local file header (30 bytes)
+      2 * (encodedFileNameLength + exl) + // file name length and extra field length
+      (encodedCommentLength ?? 0) + // file comment length
+      l; // file data length
   }
-  const out = new u8(tot + 22), oe = o, cdl = tot - o;
-  for (let i = 0; i < files.length; ++i) {
-    const f = files[i];
-    writeZipHeader(out, f.o, f);
-    const badd = 30 + f.f.length + extraFieldLength(f.extra);
-    out.set(f.c, f.o + badd);
-    writeZipHeader(out, o, f, f.o, f.m),
-      o += 16 + badd + (f.m ? f.m.length : 0);
+  /** The output buffer */
+  const out = new u8(tot + MIN_END_OF_CENTRAL_DIRECTORY_SIZE);
+  /** The offset of start of central directory with respect to the starting disk number */
+  const oe = o;
+  /** The total size of central directory file headers */
+  const cdl = tot - o;
+  for (const file of files) {
+    writeZipHeader(out, file.o, file);
+    const localFileHeaderSize = MIN_LOCAL_FILE_HEADER_SIZE + file.f.length +
+      extraFieldLength(file.extra);
+    out.set(file.c, file.o + localFileHeaderSize);
+    // In this loop, `o` represents the offset of the central directory file header
+    writeZipHeader(out, o, file, file.o, file.m);
+    o +=
+      // // total minimum bytes required for a central directory file header (46 bytes) - MIN_LOCAL_FILE_HEADER_SIZE (30 bytes)
+      16 +
+      // the size of the local file header
+      localFileHeaderSize +
+      // file comment length
+      (file.m?.length ?? 0);
   }
   writeZipFooter(out, o, files.length, cdl, oe);
   return out;

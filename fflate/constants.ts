@@ -123,3 +123,11 @@ export const ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE = 0x6064b50;
  * see APPNOTE.txt, section 4.3.16
  */
 export const MIN_END_OF_CENTRAL_DIRECTORY_SIZE = 22;
+
+/** minimum size of a local file header
+ *
+ * signature (4) + version needed to extract (2) + general purpose bit flag (2) + compression method (2) + last mod file time (2) + last mod file date (2) + crc32 (4) + compressed size (4) + uncompressed size (4) + file name length (2) + extra field length (2) = 30
+ *
+ * see APPNOTE.txt, section 4.3.7
+ */
+export const MIN_LOCAL_FILE_HEADER_SIZE = 30;
