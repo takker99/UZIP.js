@@ -87,7 +87,7 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
     // In this loop, `o` represents the offset of the central directory file header
     writeZipHeader(out, o, file, file.o, file.m);
     o +=
-      // // total minimum bytes required for a central directory file header (46 bytes) - MIN_LOCAL_FILE_HEADER_SIZE (30 bytes)
+      // total minimum bytes required for a central directory file header (46 bytes) - MIN_LOCAL_FILE_HEADER_SIZE (30 bytes)
       16 +
       // the size of the local file header
       localFileHeaderSize +
