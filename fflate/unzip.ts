@@ -179,7 +179,10 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
  * @param LocalFileHeaderOffset - the offset of the local file header
  * @returns the offset of the file data
  */
-const getFileDataOffset = (buffer: Uint8Array, LocalFileHeaderOffset: number): number =>
+const getFileDataOffset = (
+  buffer: Uint8Array,
+  LocalFileHeaderOffset: number,
+): number =>
   LocalFileHeaderOffset +
   MIN_LOCAL_FILE_HEADER_SIZE +
   // file name length: (2 bytes)
@@ -220,7 +223,10 @@ const readZipHeader = (
    * see APPNOTE.txt section 4.4.17
    */
   const fileName = decode(
-    buffer.subarray(centralDirectoryOffset + 46, centralDirectoryOffset + 46 + fileNameLength),
+    buffer.subarray(
+      centralDirectoryOffset + 46,
+      centralDirectoryOffset + 46 + fileNameLength,
+    ),
     !(getUint16(buffer, centralDirectoryOffset + 8) & 2048),
   );
 

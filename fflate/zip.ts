@@ -30,14 +30,12 @@ import {
  * @returns The generated ZIP archive
  */
 export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
-  const r = flatten(data, "", opts ?? {});
   const files: ZipData[] = [];
   /** The offset of the next local file header */
   let o = 0;
   /** The total size of central directory file headers and local file headers */
   let tot = 0;
-  for (const fileName in r) {
-    const [file, p] = r[fileName];
+  for (const [fileName, file, p] of flatten(data, "", opts ?? {})) {
     const compression = p.level == 0 ? 0 : 8;
     const encodedFileName = encode(fileName);
     const encodedFileNameLength = encodedFileName.length;
@@ -354,20 +352,24 @@ const writeZipHeader = (
  * This structure is described in PKZIP's APPNOTE.txt, section 4.3.16.
  *
  * @param buffer - The buffer to write to
- * @param byteOffset - The offset to write at
- * @param c - The total number of entries in the central dir
- * @param d - The size of the central directory
- * @param e - The offset of start of central directory with respect to the starting disk number
+ * @param endOfCentralDirectoryOffset - The offset to write at
+ * @param centralDirectoryCount - The total number of entries in the central directory
+ * @param centralDirectorySize - The size of the central directory
+ * @param centralDirectoryOffsetWithDisk - The offset of start of central directory with respect to the starting disk number
  */
 const writeZipFooter = (
   buffer: Uint8Array,
-  byteOffset: number,
-  c: number,
-  d: number,
-  e: number,
+  endOfCentralDirectoryOffset: number,
+  centralDirectoryCount: number,
+  centralDirectorySize: number,
+  centralDirectoryOffsetWithDisk: number,
 ): void => {
   // Signature: (4 bytes)
-  setUint(buffer, byteOffset, END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE);
+  setUint(
+    buffer,
+    endOfCentralDirectoryOffset,
+    END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE,
+  );
 
   // (Skip) number of this disk: (2 bytes)
   // see APPNOTE.txt, section 4.4.19.
@@ -377,19 +379,23 @@ const writeZipFooter = (
 
   // total number of entries in the central dir on this disk: (2 bytes)
   // see APPNOTE.txt, section 4.4.21.
-  setUint(buffer, byteOffset + 8, c);
+  setUint(buffer, endOfCentralDirectoryOffset + 8, centralDirectoryCount);
 
   // total number of entries in the central dir: (2 bytes)
   // see APPNOTE.txt, section 4.4.22.
-  setUint(buffer, byteOffset + 10, c);
+  setUint(buffer, endOfCentralDirectoryOffset + 10, centralDirectoryCount);
 
   // size of the central directory: (4 bytes)
   // see APPNOTE.txt, section 4.4.23.
-  setUint(buffer, byteOffset + 12, d);
+  setUint(buffer, endOfCentralDirectoryOffset + 12, centralDirectorySize);
 
   // offset of start of central directory with respect to the starting disk number: (4 bytes)
   // see APPNOTE.txt, section 4.4.24.
-  setUint(buffer, byteOffset + 16, e);
+  setUint(
+    buffer,
+    endOfCentralDirectoryOffset + 16,
+    centralDirectoryOffsetWithDisk,
+  );
 
   // (Skip) .ZIP file comment length: (2 bytes)
   // see APPNOTE.txt, section 4.4.25.

@@ -79,29 +79,22 @@ export interface Zippable<O = ZipOptions> {
   [path: string]: ZippableFile<O>;
 }
 
-/** flattened Zippable */
-export interface FlatZippable<O = ZipOptions> {
-  [path: string]: [Uint8Array, O];
-}
-
 /** flatten a directory structure */
-export const flatten = <O>(
+export function* flatten<O>(
   directory: Zippable<O>,
   path: string,
   options: O,
-): FlatZippable<O> => {
-  let t: FlatZippable<O> = {};
+): Generator<[string, Uint8Array, O], void, unknown> {
   for (const k in directory) {
     let val = directory[k], n = path + k, op = options;
     if (Array.isArray(val)) {
       op = mrg(options, val[1]), val = val[0];
     }
     if (val instanceof u8) {
-      t[n] = [val, op];
+      yield [n, val, op];
     } else {
-      t[n += "/"] = [new u8(), op];
-      t = mrg(t, flatten(val, n, options));
+      yield [n += "/", new u8(), op];
+      yield* flatten(val, n, options);
     }
   }
-  return t;
-};
+}
