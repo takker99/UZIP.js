@@ -55,5 +55,5 @@ const gzh = (c: Uint8Array, o: GzipOptions): void => {
 };
 
 /** gzip header length */
-export const gzhl = (o: GzipOptions): number =>
+const gzhl = (o: GzipOptions): number =>
   10 + (o.filename ? o.filename.length + 1 : 0);
