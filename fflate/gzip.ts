@@ -1,5 +1,5 @@
 import { setUint } from "./bytes.ts";
-import { crc32 } from "./crc32.ts";
+import { crc32 } from "@takker/crc";
 import { type DeflateOptions, dopt } from "./deflate.ts";
 
 /** Options for compressing data into a GZIP format */

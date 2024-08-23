@@ -8,7 +8,8 @@
     "test": "deno test --doc"
   },
   "imports": {
-    "@std/assert": "jsr:@std/assert@^1.0.2"
+    "@std/assert": "jsr:@std/assert@^1.0.2",
+    "@takker/crc": "jsr:@takker/crc@^0.1.0"
   },
   "exclude": [
     "docs"

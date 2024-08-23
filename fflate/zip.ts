@@ -13,7 +13,7 @@ import {
   type Zippable,
 } from "./zippable.ts";
 import { deflate } from "./deflate.ts";
-import { crc32 } from "./crc32.ts";
+import { crc32 } from "@takker/crc";
 import { u8 } from "./shorthands.ts";
 import { setUint } from "./bytes.ts";
 import { END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE } from "./constants.ts";
