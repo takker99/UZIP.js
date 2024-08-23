@@ -16,13 +16,15 @@ const makeRev = () => {
   return rev;
 };
 
-// map of value to reverse (assuming 16 bits)
+/** map of value to reverse (assuming 16 bits) */
 const rev = /*#__PURE__*/ makeRev();
 
-// create huffman tree from u8 "map": index -> code length for code index
-// mb (max bits) must be at most 15
-// TODO: optimize/split up?
-
+/** create huffman tree from u8 "map": index -> code length for code index
+ *
+ * mb (max bits) must be at most 15
+ *
+ * TODO: optimize/split up?
+ */
 export const hMap = (cd: Uint8Array, maxBits: number, r: 0 | 1) => {
   const s = cd.length;
   // index
@@ -70,16 +72,16 @@ export const hMap = (cd: Uint8Array, maxBits: number, r: 0 | 1) => {
   }
   return co;
 };
-// fixed length tree
 
+/** fixed length tree */
 export const flt = new u8(288).fill(8, 0, 144).fill(9, 144, 256)
   .fill(7, 256, 280).fill(8, 280, 288);
-// fixed distance tree
+/** fixed distance tree */
 export const fdt = new u8(32).fill(5);
-// fixed length map
+/** fixed length map */
 export const flm = /*#__PURE__*/ hMap(flt, 9, 0);
 export const flrm = /*#__PURE__*/ hMap(flt, 9, 1);
-// fixed distance map
+/** fixed distance map */
 export const fdm = /*#__PURE__*/ hMap(fdt, 5, 0),
   fdrm = /*#__PURE__*/ hMap(fdt, 5, 1);
 
