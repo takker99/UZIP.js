@@ -6,6 +6,7 @@ import { decode } from "./str-buffer.ts";
 import {
   END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE,
   MIN_END_OF_CENTRAL_DIRECTORY_SIZE,
+  MIN_LOCAL_FILE_HEADER_SIZE,
   ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE,
 } from "./constants.ts";
 
@@ -82,154 +83,218 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
     if (!e || data.length - e > 0x10016) err(InvalidZipData);
   }
 
-  // read total number of entries in the central dir on this disk: (2 bytes)
-  // see APPNOTE.txt, section 4.4.21
-  let c = getUint16(data, e + 8);
-  if (!c) return {};
+  /** The total number of entries in the central directory on this disk
+   *
+   * the size is 2 bytes if the archive is not in ZIP64 format, and 8 bytes otherwise
+   *
+   * see APPNOTE.txt, section 4.4.21
+   */
+  let centralDirectoryCount = getUint16(data, e + 8);
+  if (!centralDirectoryCount) return {};
 
-  // read offset of start of central directory with respect to the starting disk number: (4 bytes)
-  // see APPNOTE.txt, section 4.4.24
-  let o = getUint32(data, e + 16);
+  /** The offset of start of central directory with respect to the starting disk number
+   *
+   * the size is 2 bytes if the archive is not in ZIP64 format, and 8 bytes otherwise
+   *
+   * see APPNOTE.txt, section 4.4.24
+   */
+  let centralDirectoryOffset = getUint32(data, e + 16);
 
   /** whether the archive is in ZIP64 format */
-  let z = o == 0xffffffff || c == 0xffff;
-  if (z) {
-    // read relative offset of the zip64 end of central directory record] (8 bytes)
-    // see APPNOTE.txt, section 4.3.15
-    const ze = getUint32(data, e - 12);
-    z = getUint32(data, ze) == ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE;
-    if (z) {
+  let isZip64 = centralDirectoryOffset == 0xffffffff ||
+    centralDirectoryCount == 0xffff;
+  if (isZip64) {
+    /** relative offset of the zip64 end of central directory record (8 bytes)
+     *
+     * see APPNOTE.txt, section 4.3.15
+     */
+    const zip64EndOfCentralDirectoryRecordOffset = getUint32(data, e - 12);
+    isZip64 = getUint32(data, zip64EndOfCentralDirectoryRecordOffset) ==
+      ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE;
+    if (isZip64) {
       // read total number of entries in the central dir on this disk: (8 bytes)
       // see APPNOTE.txt, section 4.4.21
-      c = getUint32(data, ze + 32);
+      centralDirectoryCount = getUint32(
+        data,
+        zip64EndOfCentralDirectoryRecordOffset + 32,
+      );
 
       // read offset of start of central directory with respect to the starting disk number: (8 bytes)
       // see APPNOTE.txt, section 4.4.24
-      o = getUint32(data, ze + 48);
+      centralDirectoryOffset = getUint32(
+        data,
+        zip64EndOfCentralDirectoryRecordOffset + 48,
+      );
     }
   }
   const fltr = opts?.filter;
-  for (let i = 0; i < c; ++i) {
-    const [c, sc, su, fn, no, off] = readZipHeader(data, o, z),
-      b = skipLocalFileHeader(data, off);
-    o = no;
+  for (let _ = 0; _ < centralDirectoryCount; ++_) {
+    const [
+      compressionMethod,
+      compressedSize,
+      uncompressedSize,
+      fileName,
+      nextOffset,
+      localFileHeaderOffset,
+    ] = readZipHeader(
+      data,
+      centralDirectoryOffset,
+      isZip64,
+    );
+    centralDirectoryOffset = nextOffset;
     if (
-      fltr?.({
-        name: fn,
-        size: sc,
-        originalSize: su,
-        compression: c,
+      !fltr?.({
+        name: fileName,
+        size: compressedSize,
+        originalSize: uncompressedSize,
+        compression: compressionMethod,
       })
     ) {
-      if (!c) files[fn] = data.slice(b, b + sc);
-      else if (c == 8) {
-        files[fn] = inflate(data.subarray(b, b + sc), { out: new u8(su) });
-      } else err(UnknownCompressionMethod, "unknown compression type " + c);
+      continue;
     }
+    const fileDataOffset = getFileDataOffset(data, localFileHeaderOffset);
+    if (!compressionMethod) {
+      files[fileName] = data.slice(
+        fileDataOffset,
+        fileDataOffset + compressedSize,
+      );
+    } else if (compressionMethod == 8) {
+      files[fileName] = inflate(
+        data.subarray(fileDataOffset, fileDataOffset + compressedSize),
+        { out: new u8(uncompressedSize) },
+      );
+    } else {err(
+        UnknownCompressionMethod,
+        "unknown compression type " + compressionMethod,
+      );}
   }
   return files;
 };
 
-/** skip a local file header
+/** get a file data offset
  *
  * see APPNOTE.txt section 4.3.7
  *
  * @param buffer - the buffer
- * @param byteOffset - the byte offset
- * @returns the new byte offset
+ * @param LocalFileHeaderOffset - the offset of the local file header
+ * @returns the offset of the file data
  */
-const skipLocalFileHeader = (buffer: Uint8Array, byteOffset: number): number =>
-  byteOffset +
-  30 +
+const getFileDataOffset = (buffer: Uint8Array, LocalFileHeaderOffset: number): number =>
+  LocalFileHeaderOffset +
+  MIN_LOCAL_FILE_HEADER_SIZE +
   // file name length: (2 bytes)
   // see APPNOTE.txt section 4.4.10
-  getUint16(buffer, byteOffset + 26) +
+  getUint16(buffer, LocalFileHeaderOffset + 26) +
   // extra field length: (2 bytes)
   // see APPNOTE.txt section 4.4.11
-  getUint16(buffer, byteOffset + 28);
+  getUint16(buffer, LocalFileHeaderOffset + 28);
 
-/** read a central directory fle header
+/** read a central directory file header
  *
  * see APPNOTE.txt section 4.3.12
  *
  * @param buffer - the buffer
- * @param byteOffset - the byte offset
+ * @param centralDirectoryOffset - the offset of the central directory file header
  * @param isZip64 - whether the archive is in ZIP64 format
+ * @returns the tuple containing:
+ * 1. the compression method
+ * 2. the compressed size
+ * 3. the uncompressed size
+ * 4. the file name
+ * 5. the offset of the next central directory file header
+ * 6. the relative offset of local header
  */
 const readZipHeader = (
   buffer: Uint8Array,
-  byteOffset: number,
+  centralDirectoryOffset: number,
   isZip64: boolean,
 ): [number, number, number, string, number, number] => {
   /** file name length: (2 bytes)
    *
    * see APPNOTE.txt section 4.4.10
    */
-  const fileNameLength = getUint16(buffer, byteOffset + 28);
+  const fileNameLength = getUint16(buffer, centralDirectoryOffset + 28);
 
   /** file name: (variable size)
    *
    * see APPNOTE.txt section 4.4.17
    */
   const fileName = decode(
-    buffer.subarray(byteOffset + 46, byteOffset + 46 + fileNameLength),
-    !(getUint16(buffer, byteOffset + 8) & 2048),
+    buffer.subarray(centralDirectoryOffset + 46, centralDirectoryOffset + 46 + fileNameLength),
+    !(getUint16(buffer, centralDirectoryOffset + 8) & 2048),
   );
 
-  const es = byteOffset + 47 + fileNameLength;
+  const extraFieldOffset = centralDirectoryOffset +
+    46 + // total minimum bytes required for a central directory file header (46 bytes)
+    fileNameLength;
 
   /** compressed size: (4 bytes)
    *
    * see APPNOTE.txt section 4.4.8
    */
-  const bs = getUint32(buffer, byteOffset + 20);
+  const compressedSize32 = getUint32(buffer, centralDirectoryOffset + 20);
 
-  const [sc, su, off] = isZip64 && bs == 0xffffffff
-    ? readZip64ExtraField(buffer, es)
-    : [
-      bs,
-      // read uncompressed size: (4 bytes)
-      // see APPNOTE.txt section 4.4.9
-      getUint32(buffer, byteOffset + 24),
-      // read relative offset of local header: (4 bytes)
-      // see APPNOTE.txt section 4.4.16
-      getUint32(buffer, byteOffset + 42),
-    ];
+  const [compressedSize, uncompressedSize, localFileHeaderOffset] =
+    isZip64 && compressedSize32 == 0xffffffff
+      ? readZip64ExtraField(buffer, extraFieldOffset)
+      : [
+        compressedSize32,
+        // read uncompressed size: (4 bytes)
+        // see APPNOTE.txt section 4.4.9
+        getUint32(buffer, centralDirectoryOffset + 24),
+        // read relative offset of local header: (4 bytes)
+        // see APPNOTE.txt section 4.4.16
+        getUint32(buffer, centralDirectoryOffset + 42),
+      ];
   return [
     // read compression method: (2 bytes)
     // see APPNOTE.txt section 4.4.5
-    getUint16(buffer, byteOffset + 10),
-    sc,
-    su,
+    getUint16(buffer, centralDirectoryOffset + 10),
+    compressedSize,
+    uncompressedSize,
     fileName,
-    es +
+    extraFieldOffset +
     // read extra field length: (2 bytes)
     // see APPNOTE.txt section 4.4.11
-    getUint16(buffer, byteOffset + 30) +
+    getUint16(buffer, centralDirectoryOffset + 30) +
     // rad file comment length: (2 bytes)
     // see APPNOTE.txt section 4.4.12
-    getUint16(buffer, byteOffset + 32),
-    off,
+    getUint16(buffer, centralDirectoryOffset + 32),
+    localFileHeaderOffset,
   ];
 };
 
-/** read zip64 extra field */
+/** read part of a Zip64 extended information extra field
+ *
+ * This is located in an extra field
+ *
+ * see APPNOTE.txt section 4.5.3
+ *
+ * @param buffer - the buffer
+ * @param extraFieldOffset - the offset of the extra field
+ * @returns the tuple containing:
+ * 1. the compressed size
+ * 2. the uncompressed size
+ * 3. the relative offset of local header
+ */
 const readZip64ExtraField = (
   buffer: Uint8Array,
-  byteOffset: number,
+  extraFieldOffset: number,
 ): [number, number, number] => {
   for (
     ;
-    getUint16(buffer, byteOffset) != 1;
-    byteOffset += 4 + getUint16(buffer, byteOffset + 2)
+    getUint16(buffer, extraFieldOffset) != 1;
+    extraFieldOffset += 4 + getUint16(buffer, extraFieldOffset + 2)
   );
   return [
     // read compressed size: (8 bytes)
     // see APPNOTE.txt section 4.4.8
-    getUint64(buffer, byteOffset + 12),
+    getUint64(buffer, extraFieldOffset + 12),
     // read uncompressed size: (8 bytes)
     // see APPNOTE.txt section 4.4.9
-    getUint64(buffer, byteOffset + 4),
-    getUint64(buffer, byteOffset + 20),
+    getUint64(buffer, extraFieldOffset + 4),
+    // read relative offset of local header: (8 bytes)
+    // see APPNOTE.txt section 4.4.16
+    getUint64(buffer, extraFieldOffset + 20),
   ];
 };
