@@ -13,9 +13,9 @@ import {
   type ZipOptions,
   type Zippable,
 } from "./zippable.ts";
+import { setUintLE } from "@takker/bytes";
 import { crc32 } from "@takker/crc";
 import { u8 } from "./shorthands.ts";
-import { setUint } from "./bytes.ts";
 import {
   END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE,
   MIN_END_OF_CENTRAL_DIRECTORY_SIZE,
@@ -209,7 +209,7 @@ const writeZipHeader = (
   const compressedSize = file.c.length;
 
   // write the signature (4 bytes)
-  setUint(
+  setUintLE(
     buffer,
     byteOffset,
     ce != null
@@ -249,7 +249,7 @@ const writeZipHeader = (
   const dt = new Date(file.mtime == null ? Date.now() : file.mtime),
     y = dt.getFullYear() - 1980;
   if (y < 0 || y > 119) err(InvalidDate);
-  setUint(
+  setUintLE(
     buffer,
     byteOffset,
     (y << 25) | ((dt.getMonth() + 1) << 21) | (dt.getDate() << 16) |
@@ -259,11 +259,11 @@ const writeZipHeader = (
   if (compressedSize != -1) {
     // write CRC-32: (4 bytes)
     // see APPNOTE.txt, section 4.4.7.
-    setUint(buffer, byteOffset, file.crc);
+    setUintLE(buffer, byteOffset, file.crc);
 
     // write compressed size: (4 bytes)
     // see APPNOTE.txt, section 4.4.8.
-    setUint(
+    setUintLE(
       buffer,
       byteOffset + 4,
       compressedSize < 0 ? -compressedSize - 2 : compressedSize,
@@ -271,20 +271,20 @@ const writeZipHeader = (
 
     // write uncompressed size: (4 bytes)
     // see APPNOTE.txt, section 4.4.9.
-    setUint(buffer, byteOffset + 8, file.size);
+    setUintLE(buffer, byteOffset + 8, file.size);
   }
 
   // write file name length: (2 bytes)
   // see APPNOTE.txt, section 4.4.10
   const fileNameLength = fileName.length;
-  setUint(buffer, byteOffset + 12, fileNameLength);
+  setUintLE(buffer, byteOffset + 12, fileNameLength);
 
   const extra = file.extra;
   const exl = extraFieldLength(extra);
 
   // write extra field length: (2 bytes)
   // see APPNOTE.txt, section 4.4.11
-  setUint(buffer, byteOffset + 14, exl), byteOffset += 16;
+  setUintLE(buffer, byteOffset + 14, exl), byteOffset += 16;
 
   const commentLength = comment?.length;
   if (ce != null) {
@@ -292,7 +292,7 @@ const writeZipHeader = (
 
     // write file comment length: (2 bytes)
     // see APPNOTE.txt, section 4.4.12
-    setUint(buffer, byteOffset, commentLength!);
+    setUintLE(buffer, byteOffset, commentLength!);
 
     // skip disk number start: (2 bytes)
     // see APPNOTE.txt, section 4.4.13
@@ -302,11 +302,11 @@ const writeZipHeader = (
 
     // write external file attributes: (4 bytes)
     // see APPNOTE.txt, section 4.4.15
-    setUint(buffer, byteOffset + 6, file.attrs!);
+    setUintLE(buffer, byteOffset + 6, file.attrs!);
 
     // write relative offset of local header: (4 bytes)
     // see APPNOTE.txt, section 4.4.16
-    setUint(buffer, byteOffset + 10, ce);
+    setUintLE(buffer, byteOffset + 10, ce);
 
     byteOffset += 14;
   }
@@ -324,7 +324,7 @@ const writeZipHeader = (
     for (const k in extra) {
       // write Header ID: (2 bytes)
       // see APPNOTE.txt, section 4.5.1
-      setUint(buffer, byteOffset, +k);
+      setUintLE(buffer, byteOffset, +k);
 
       // @ts-ignore: we know this is a string
       const exf = extra[k];
@@ -332,7 +332,7 @@ const writeZipHeader = (
 
       // write Data Size: (2 bytes)
       // see APPNOTE.txt, section 4.5.1
-      setUint(buffer, byteOffset + 2, l);
+      setUintLE(buffer, byteOffset + 2, l);
 
       // write Data: (Variable)
       buffer.set(exf, byteOffset + 4);
@@ -366,7 +366,7 @@ const writeZipFooter = (
   centralDirectoryOffsetWithDisk: number,
 ): void => {
   // Signature: (4 bytes)
-  setUint(
+  setUintLE(
     buffer,
     endOfCentralDirectoryOffset,
     END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE,
@@ -380,19 +380,19 @@ const writeZipFooter = (
 
   // total number of entries in the central dir on this disk: (2 bytes)
   // see APPNOTE.txt, section 4.4.21.
-  setUint(buffer, endOfCentralDirectoryOffset + 8, centralDirectoryCount);
+  setUintLE(buffer, endOfCentralDirectoryOffset + 8, centralDirectoryCount);
 
   // total number of entries in the central dir: (2 bytes)
   // see APPNOTE.txt, section 4.4.22.
-  setUint(buffer, endOfCentralDirectoryOffset + 10, centralDirectoryCount);
+  setUintLE(buffer, endOfCentralDirectoryOffset + 10, centralDirectoryCount);
 
   // size of the central directory: (4 bytes)
   // see APPNOTE.txt, section 4.4.23.
-  setUint(buffer, endOfCentralDirectoryOffset + 12, centralDirectorySize);
+  setUintLE(buffer, endOfCentralDirectoryOffset + 12, centralDirectorySize);
 
   // offset of start of central directory with respect to the starting disk number: (4 bytes)
   // see APPNOTE.txt, section 4.4.24.
-  setUint(
+  setUintLE(
     buffer,
     endOfCentralDirectoryOffset + 16,
     centralDirectoryOffsetWithDisk,

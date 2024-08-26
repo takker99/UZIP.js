@@ -3,30 +3,6 @@
  * @module
  */
 
-/** read 2 bytes */
-export const getUint16 = (buffer: Uint8Array, byteOfsset: number): number =>
-  buffer[byteOfsset] | (buffer[byteOfsset + 1] << 8);
-
-/** read 4 bytes */
-
-export const getUint32 = (buffer: Uint8Array, byteOffset: number): number =>
-  (buffer[byteOffset] | (buffer[byteOffset + 1] << 8) |
-    (buffer[byteOffset + 2] << 16) | (buffer[byteOffset + 3] << 24)) >>> 0;
-
-/** read 8 bytes */
-export const getUint64 = (buffer: Uint8Array, byteOffset: number): number =>
-  getUint32(buffer, byteOffset) +
-  getUint32(buffer, byteOffset + 4) * 0x100000000;
-
-/** write bytes */
-export const setUint = (
-  buffer: Uint8Array,
-  byteOffset: number,
-  value: number,
-): void => {
-  for (; value; ++byteOffset) buffer[byteOffset] = value, value >>>= 8;
-};
-
 /** read d, starting at bit p and mask with m */
 export const bits = (
   buffer: Uint8Array,

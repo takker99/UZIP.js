@@ -1,6 +1,6 @@
-import { setUint } from "./bytes.ts";
 import { crc32 } from "@takker/crc";
 import { type DeflateOptions, dopt } from "./deflate.ts";
+import { setUintLE } from "@takker/bytes";
 
 /** Options for compressing data into a GZIP format */
 export interface GzipOptions extends DeflateOptions {
@@ -26,7 +26,7 @@ export const gzip = (data: Uint8Array, opts?: GzipOptions): Uint8Array => {
   if (!opts) opts = {};
   const c = crc32(data), l = data.length;
   const d = dopt(data, opts, gzhl(opts), 8), s = d.length;
-  return gzh(d, opts), setUint(d, s - 8, c), setUint(d, s - 4, l), d;
+  return gzh(d, opts), setUintLE(d, s - 8, c), setUintLE(d, s - 4, l), d;
 };
 
 /** gzip header */
@@ -38,7 +38,7 @@ const gzh = (c: Uint8Array, o: GzipOptions): void => {
     c[8] = (o.level ?? 0) < 2 ? 4 : o.level == 9 ? 2 : 0,
     c[9] = 3; // assume Unix
   if (o.mtime != 0) {
-    setUint(
+    setUintLE(
       c,
       4,
       Math.floor(

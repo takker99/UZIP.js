@@ -1,4 +1,4 @@
-import { setUint } from "./bytes.ts";
+import { setUintLE } from "@takker/bytes";
 import { alder32 } from "./alder32.ts";
 import { type DeflateOptions, dopt } from "./deflate.ts";
 
@@ -18,7 +18,7 @@ export const zlib = (data: Uint8Array, opts?: ZlibOptions): Uint8Array => {
   if (!opts) opts = {};
   const a = alder32(data);
   const d = dopt(data, opts, opts.dictionary ? 6 : 2, 4);
-  return zlh(d, opts), setUint(d, d.length - 4, a), d;
+  return zlh(d, opts), setUintLE(d, d.length - 4, a), d;
 };
 
 /** zlib header */
@@ -28,6 +28,6 @@ const zlh = (c: Uint8Array, o: ZlibOptions): void => {
   c[0] = 120, c[1] = (fl << 6) | (o.dictionary && 32);
   c[1] |= 31 - ((c[0] << 8) | c[1]) % 31;
   if (o.dictionary) {
-    setUint(c, 2, alder32(o.dictionary));
+    setUintLE(c, 2, alder32(o.dictionary));
   }
 };

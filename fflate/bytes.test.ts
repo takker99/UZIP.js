@@ -1,39 +1,5 @@
-import {
-  bits,
-  getUint16,
-  getUint32,
-  getUint64,
-  setUint,
-  shft,
-  wbits,
-  wbits16,
-} from "./bytes.ts";
+import { bits, shft, wbits, wbits16 } from "./bytes.ts";
 import { assertEquals } from "@std/assert";
-
-Deno.test("b2 should read 2 bytes correctly", () => {
-  const buffer = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
-  assertEquals(getUint16(buffer, 0), 0x0201);
-  assertEquals(getUint16(buffer, 2), 0x0403);
-});
-
-Deno.test("b4 should read 4 bytes correctly", () => {
-  const buffer = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06]);
-  assertEquals(getUint32(buffer, 0), 0x04030201);
-  assertEquals(getUint32(buffer, 2), 0x06050403);
-});
-
-Deno.test("b8 should read 8 bytes correctly", () => {
-  // deno-fmt-ignore
-  const buffer = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A]);
-  assertEquals(getUint64(buffer, 0), 0x0807060504030201);
-  assertEquals(getUint64(buffer, 2), 0x0A09080706050403);
-});
-
-Deno.test("wbytes should write bytes correctly", () => {
-  const buffer = new Uint8Array(4);
-  setUint(buffer, 0, 0x04030201);
-  assertEquals(buffer, new Uint8Array([0x01, 0x02, 0x03, 0x04]));
-});
 
 Deno.test("bits should read bits correctly", () => {
   const buffer = new Uint8Array([0b10101010, 0b01010101]);
