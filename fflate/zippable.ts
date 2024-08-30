@@ -59,7 +59,7 @@ export interface ZipAttributes {
    */
   mtime?: GzipOptions["mtime"];
 
-  compression?: [CompressionMethod, Compressor];
+  compression?: CompressionMethod | [CompressionMethod, Compressor];
 }
 
 /** data compresser
@@ -74,7 +74,6 @@ export type Compressor = (
 ) => Uint8Array;
 
 export const compressionNameToNumber = {
-  store: 0,
   deflate: 8,
   lzma: 14,
   zstd: 93,
@@ -82,7 +81,6 @@ export const compressionNameToNumber = {
 export type CompressionMethod = keyof typeof compressionNameToNumber;
 export type CompressionMethodNumber = keyof typeof compressionNumberToName;
 export const compressionNumberToName = {
-  0: "store",
   8: "deflate",
   14: "lzma",
   93: "zstd",
@@ -95,38 +93,58 @@ export type CompressionMethodMap = Partial<
 /**
  * Options for creating a ZIP archive
  */
-export interface ZipOptions extends DeflateOptions, ZipAttributes {}
+export interface ZipOptions
+  extends DeflateOptions, Omit<ZipAttributes, "compression"> {
+  compressionMethods?: CompressionMethodMap;
+}
+
+export interface FlattenedZipOptions
+  extends Omit<ZipOptions, "compressionMethods"> {
+  compression?: [CompressionMethod, Compressor];
+}
+
 /**
  * A file that can be used to create a ZIP archive
  */
-export type ZippableFile<O> = Uint8Array | Zippable<O> | [
-  Uint8Array | Zippable<O>,
-  O,
+export type ZippableFile = Uint8Array | Zippable | [
+  Uint8Array | Zippable,
+  ZipAttributes,
 ];
 
 /**
  * The complete directory structure of a ZIPpable archive
  */
-export interface Zippable<O = ZipOptions> {
-  [path: string]: ZippableFile<O>;
+export interface Zippable {
+  [path: string]: ZippableFile;
 }
 
 /** flatten a directory structure */
-export function* flatten<O>(
-  directory: Zippable<O>,
+export function* flatten(
+  directory: Zippable,
   path: string,
-  options: O,
-): Generator<[string, Uint8Array, O], void, unknown> {
+  globalOptions: ZipOptions,
+): Generator<[string, Uint8Array, FlattenedZipOptions], void, unknown> {
   for (const k in directory) {
-    let val = directory[k], n = path + k, op = options;
+    let val = directory[k],
+      n = path + k,
+      op: FlattenedZipOptions = globalOptions;
     if (Array.isArray(val)) {
-      op = mrg(options, val[1]), val = val[0];
+      let { compression, ...rest } = val[1];
+      val = val[0];
+      if (typeof compression === "string") {
+        const compresser = globalOptions.compressionMethods?.[compression];
+        if (!compresser) {
+          throw new Error(`Compression method ${compression} not found`);
+        }
+        compression = [compression, compresser];
+      }
+      op = {...globalOptions, ...rest, compression};
     }
     if (val instanceof u8) {
       yield [n, val, op];
     } else {
       yield [n += "/", new u8(), op];
-      yield* flatten(val, n, options);
+      yield* flatten(val, n, globalOptions);
     }
   }
 }

@@ -6,12 +6,10 @@ import {
   InvalidDate,
   UnknownCompressionMethod,
 } from "./error.ts";
-import { mrg } from "./mrg.ts";
 import {
   type CompressionMethodNumber,
   compressionNameToNumber,
   flatten,
-  type ZipAttributes,
   type ZipOptions,
   type Zippable,
 } from "./zippable.ts";
@@ -19,7 +17,9 @@ import { setUintLE } from "@takker/bytes";
 import { crc32 } from "@takker/crc";
 import { u8 } from "./shorthands.ts";
 import {
+  CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE,
   END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE,
+  LOCAL_FILE_HEADER_SIGNATURE,
   MIN_END_OF_CENTRAL_DIRECTORY_SIZE,
   MIN_LOCAL_FILE_HEADER_SIZE,
 } from "./constants.ts";
@@ -44,37 +44,41 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
     const comment = p.comment;
     const encodedComment = comment ? encode(comment) : undefined;
     const encodedCommentLength = encodedComment?.length;
-    const compressionMethod = p.compression
-      ? compressionNameToNumber[p.compression[0]]
-      : 0;
-    const fileData = p.compression?.[1]?.(file, p) ?? file;
+    const [compressionMethod, compress] = p.compression ?? [];
+    const fileData = compress?.(file, p) ?? file;
     if (!fileData) err(UnknownCompressionMethod);
-    files.push(mrg(p, {
-      size: file.length,
-      crc: crc32(file),
-      c: fileData!,
-      f: encodedFileName,
-      m: encodedComment,
-      u: encodedFileNameLength != fileName.length ||
-        (!!encodedComment && (comment?.length != encodedCommentLength)),
+    const compressedSize = fileData.length;
+    files.push([
       o,
-      compressionMethod,
-    }));
+      fileData,
+      encodedFileNameLength != fileName.length ||
+      (!!encodedComment && (comment?.length != encodedCommentLength)),
+      0,
+      compressionMethod ? compressionNameToNumber[compressionMethod] : 0,
+      p.mtime,
+      crc32(file),
+      compressedSize,
+      file.length,
+      encodedFileName,
+      p.extra,
+      p.attrs,
+      p.os,
+      encodedComment,
+    ]);
 
-    const exl = extraFieldLength(p.extra);
-    const l = fileData!.length;
+    const extraFieldLength = getExtraFieldLength(p.extra);
 
     // add the size of the local file header
     o += MIN_LOCAL_FILE_HEADER_SIZE +
       encodedFileNameLength + // file name length
-      exl + // extra field length
-      l; // file data length
+      extraFieldLength + // extra field length
+      compressedSize; // file data length
 
     // add the size of the central directory file header and the local file header
     tot += 76 + // total minimum bytes required for a central directory file header (46 bytes) and a local file header (30 bytes)
-      2 * (encodedFileNameLength + exl) + // file name length and extra field length
+      2 * (encodedFileNameLength + extraFieldLength) + // file name length and extra field length
       (encodedCommentLength ?? 0) + // file comment length
-      l; // file data length
+      compressedSize; // file data length
   }
   /** The output buffer */
   const out = new u8(tot + MIN_END_OF_CENTRAL_DIRECTORY_SIZE);
@@ -82,76 +86,53 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
   const oe = o;
   /** The total size of central directory file headers */
   const cdl = tot - o;
-  for (const file of files) {
-    writeZipHeader(out, file.o, file);
-    const localFileHeaderSize = MIN_LOCAL_FILE_HEADER_SIZE + file.f.length +
-      extraFieldLength(file.extra);
-    out.set(file.c, file.o + localFileHeaderSize);
+  for (const [offset, fileData, ...metadata] of files) {
+    const fileDataOffset = writeZipHeader(out, offset, ...metadata);
+    out.set(fileData, fileDataOffset);
     // In this loop, `o` represents the offset of the central directory file header
-    writeZipHeader(out, o, file, file.o, file.m);
+    writeZipHeader(out, o, ...metadata, offset);
     o +=
       // total minimum bytes required for a central directory file header (46 bytes) - MIN_LOCAL_FILE_HEADER_SIZE (30 bytes)
       16 +
       // the size of the local file header
-      localFileHeaderSize +
+      fileDataOffset - offset +
       // file comment length
-      (file.m?.length ?? 0);
+      (metadata[11]?.length ?? 0);
   }
   writeZipFooter(out, o, files.length, cdl, oe);
   return out;
 };
 
-interface ZipData extends ZipHeaderFile {
-  /** compressed data */
-  c: Uint8Array;
-  /**  filename */
-  f: Uint8Array;
-  /** comment */
-  m?: Uint8Array;
-  /** unicode */
-  u: boolean;
-  /** offset */
-  o: number;
-}
-
-/** zip header file */
-interface ZipHeaderFile extends ZipAttributes {
-  /**
-   * The size of the file in bytes. This attribute may be invalid after
-   * the file is added to the ZIP archive; it must be correct only before the
-   * stream completes.
-   *
-   * If you don't want to have to compute this yourself, consider extending the
-   * ZipPassThrough class and overriding its process() method, or using one of
-   * ZipDeflate or AsyncZipDeflate.
-   */
-  size: number;
-
-  /**
-   * A CRC of the original file contents. This attribute may be invalid after
-   * the file is added to the ZIP archive; it must be correct only before the
-   * stream completes.
-   *
-   * If you don't want to have to generate this yourself, consider extending the
-   * ZipPassThrough class and overriding its process() method, or using one of
-   * ZipDeflate or AsyncZipDeflate.
-   */
-  crc: number;
-
-  /**
-   * The compression format for the data stream. This number is determined by
-   * the spec in PKZIP's APPNOTE.txt, section 4.4.5. For example, 0 = no
-   * compression, 8 = deflate, 14 = LZMA
-   */
-  compressionMethod: CompressionMethodNumber;
-
-  /**
-   * Bits 1 and 2 of the general purpose bit flag, specified in PKZIP's
-   * APPNOTE.txt, section 4.4.4. Should be between 0 and 3. This is unlikely
-   * to be necessary.
-   */
-  flag?: number;
-}
+type ZipData = [
+  // 0. offset of local file header
+  number,
+  // 1. compressed data
+  Uint8Array,
+  // 2. unicode
+  boolean,
+  // 3. flag
+  number,
+  // 4. compression method
+  CompressionMethodNumber | 0,
+  // 5. mtime
+  string | number | Date | undefined,
+  // 6. CRC-32
+  number,
+  // 7. compressed size
+  number,
+  // 8. uncompressed size
+  number,
+  // 9. filename
+  Uint8Array,
+  // 10. extra
+  Record<number, Uint8Array> | undefined,
+  // 11. attrs
+  number | undefined,
+  // 12. os
+  number | undefined,
+  // 13. comment
+  Uint8Array | undefined,
+];
 
 /** calculate extra field length
  *
@@ -160,7 +141,7 @@ interface ZipHeaderFile extends ZipAttributes {
  * @param extra - The extra field to calculate the length of
  * @returns The total length of the extra fields
  */
-const extraFieldLength = (extra?: ZipHeaderFile["extra"]): number => {
+const getExtraFieldLength = (extra?: Record<number, Uint8Array>): number => {
   if (!extra) return 0;
   let le = 0;
   for (const k in extra) {
@@ -173,9 +154,6 @@ const extraFieldLength = (extra?: ZipHeaderFile["extra"]): number => {
   return le;
 };
 
-const CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE = 0x02014b50;
-const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
-
 /** write zip header
  *
  * This function writes a local file header or a central directory file header.
@@ -184,27 +162,32 @@ const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
  *
  * @param buffer - The buffer to write to
  * @param byteOffset - The offset to write at
- * @param file - The file to write
- * @param ce - The relative offset of the local header (only for central directory file headers, see APPNOTE.txt, section 4.4.16)
  * @param comment - The file comment (only for central directory file headers, see APPNOTE.txt, section 4.4.18)
+ * @param localHeaderOffset - The relative offset of the local header (only for central directory file headers, see APPNOTE.txt, section 4.4.16)
  * @returns The new byte offset
  */
 const writeZipHeader = (
   buffer: Uint8Array,
   byteOffset: number,
-  file: ZipData,
-  ce?: number,
+  unicode: boolean,
+  flag: number,
+  compressionMethod: CompressionMethodNumber | 0,
+  mtime: string | number | Date | undefined,
+  crc: number,
+  compressedSize: number,
+  uncompressedSize: number,
+  fileName: Uint8Array,
+  extra: Record<number, Uint8Array> | undefined,
+  attrs?: number,
+  os?: number,
   comment?: Uint8Array,
+  localHeaderOffset?: number,
 ): number => {
-  const fileName = file.f;
-  const unicode = file.u;
-  const compressedSize = file.c.length;
-
   // write the signature (4 bytes)
   setUintLE(
     buffer,
     byteOffset,
-    ce != null
+    localHeaderOffset != null
       ? CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE
       : LOCAL_FILE_HEADER_SIGNATURE,
   );
@@ -212,7 +195,7 @@ const writeZipHeader = (
   // write version made by: (2 bytes)
   // this field only exists in central directory file headers
   // see APPNOTE.txt, section 4.4.2.
-  if (ce != null) buffer[byteOffset += 4] = file.os!, byteOffset += 2;
+  if (localHeaderOffset != null) buffer[byteOffset += 4] = os!, byteOffset += 2;
   else byteOffset += 4;
 
   // write the version needed to extract: (2 bytes)
@@ -228,17 +211,17 @@ const writeZipHeader = (
 
   // write general purpose bit flag: (2 bytes)
   // see APPNOTE.txt, section 4.4.4.
-  buffer[byteOffset++] = (file.flag! << 1) | (compressedSize < 0 ? 8 : 0);
+  buffer[byteOffset++] = (flag << 1) | (compressedSize < 0 ? 8 : 0);
   // Bit 11: language encoding
   buffer[byteOffset++] = unicode ? 8 : 0;
 
   // write compression method: (2 bytes)
   // see APPNOTE.txt, section 4.4.5.
-  setUintLE(buffer, byteOffset, file.compressionMethod);
+  setUintLE(buffer, byteOffset, compressionMethod);
 
   // write date and time fields: (2 bytes each)
   // see APPNOTE.txt, section 4.4.6.
-  const dt = new Date(file.mtime == null ? Date.now() : file.mtime),
+  const dt = new Date(mtime == null ? Date.now() : mtime),
     y = dt.getFullYear() - 1980;
   if (y < 0 || y > 119) err(InvalidDate);
   setUintLE(
@@ -251,7 +234,7 @@ const writeZipHeader = (
   if (compressedSize != -1) {
     // write CRC-32: (4 bytes)
     // see APPNOTE.txt, section 4.4.7.
-    setUintLE(buffer, byteOffset, file.crc);
+    setUintLE(buffer, byteOffset, crc);
 
     // write compressed size: (4 bytes)
     // see APPNOTE.txt, section 4.4.8.
@@ -263,7 +246,7 @@ const writeZipHeader = (
 
     // write uncompressed size: (4 bytes)
     // see APPNOTE.txt, section 4.4.9.
-    setUintLE(buffer, byteOffset + 8, file.size);
+    setUintLE(buffer, byteOffset + 8, uncompressedSize);
   }
 
   // write file name length: (2 bytes)
@@ -271,15 +254,14 @@ const writeZipHeader = (
   const fileNameLength = fileName.length;
   setUintLE(buffer, byteOffset + 12, fileNameLength);
 
-  const extra = file.extra;
-  const exl = extraFieldLength(extra);
+  const extraFieldLength = getExtraFieldLength(extra);
 
   // write extra field length: (2 bytes)
   // see APPNOTE.txt, section 4.4.11
-  setUintLE(buffer, byteOffset + 14, exl), byteOffset += 16;
+  setUintLE(buffer, byteOffset + 14, extraFieldLength), byteOffset += 16;
 
   const commentLength = comment?.length;
-  if (ce != null) {
+  if (localHeaderOffset != null) {
     // These fields only exist in central directory file headers.
 
     // write file comment length: (2 bytes)
@@ -294,11 +276,11 @@ const writeZipHeader = (
 
     // write external file attributes: (4 bytes)
     // see APPNOTE.txt, section 4.4.15
-    setUintLE(buffer, byteOffset + 6, file.attrs!);
+    setUintLE(buffer, byteOffset + 6, attrs!);
 
     // write relative offset of local header: (4 bytes)
     // see APPNOTE.txt, section 4.4.16
-    setUintLE(buffer, byteOffset + 10, ce);
+    setUintLE(buffer, byteOffset + 10, localHeaderOffset);
 
     byteOffset += 14;
   }
@@ -310,7 +292,7 @@ const writeZipHeader = (
 
   // write extra field: (Variable)
   // see APPNOTE.txt, section 4.4.28
-  if (exl) {
+  if (extraFieldLength) {
     // You can find the current Header ID mappings defined by PKWARE in APPNOTE.txt, from section 4.5.2 to section 4.5.19.
     // You can also find third party mappings commonly used in APPNOTE.txt, section 4.6.
     for (const k in extra) {
