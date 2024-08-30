@@ -122,8 +122,11 @@ export const revfl = /*#__PURE__*/ fre(fl);
 export const fd = /*#__PURE__*/ fb(fixedDistanceExtraBits, 1);
 export const revfd = /*#__PURE__*/ fre(fd);
 
-export const END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE = 0x6054b50;
-export const ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE = 0x6064b50;
+export const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
+export const DATA_DISCRIPTOR_SIGNATURE = 0x08074b50;
+export const CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE = 0x02014b50;
+export const ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE = 0x06064b50;
+export const END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE = 0x06054b50;
 
 /** minimum size of the end of central directory record
  *
@@ -140,3 +143,18 @@ export const MIN_END_OF_CENTRAL_DIRECTORY_SIZE = 22;
  * see APPNOTE.txt, section 4.3.7
  */
 export const MIN_LOCAL_FILE_HEADER_SIZE = 30;
+
+/** size of a data descriptor except for the signature
+ *
+ * crc32 (4) + compressed size (4) + uncompressed size (4) = 12
+ *
+ * see APPNOTE.txt, section 4.3.9
+ */
+export const DATA_DESCRIPTOR_SIZE = 12;
+/** size of a data descriptor from ZIP64 format archives except for the signature
+ *
+ * crc32 (4) + compressed size (8) + uncompressed size (8) = 20
+ *
+ * see APPNOTE.txt, section 4.3.9.1
+ */
+export const ZIP64_DATA_DESCRIPTOR_SIZE = 20;

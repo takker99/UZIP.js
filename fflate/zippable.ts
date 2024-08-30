@@ -59,14 +59,38 @@ export interface ZipAttributes {
    */
   mtime?: GzipOptions["mtime"];
 
-  /** DEFLATE data compresser
-   *
-   * @param data The data to compress
-   * @param opts The compression options
-   * @returns The deflated version of the data
-   */
-  deflate?: (data: Uint8Array, options?: DeflateOptions) => Uint8Array;
+  compression?: [CompressionMethod, Compressor];
 }
+
+/** data compresser
+ *
+ * @param data The data to compress
+ * @param opts The compression options
+ * @returns The deflated version of the data
+ */
+export type Compressor = (
+  data: Uint8Array,
+  options?: DeflateOptions,
+) => Uint8Array;
+
+export const compressionNameToNumber = {
+  store: 0,
+  deflate: 8,
+  lzma: 14,
+  zstd: 93,
+} as const;
+export type CompressionMethod = keyof typeof compressionNameToNumber;
+export type CompressionMethodNumber = keyof typeof compressionNumberToName;
+export const compressionNumberToName = {
+  0: "store",
+  8: "deflate",
+  14: "lzma",
+  93: "zstd",
+} as const;
+
+export type CompressionMethodMap = Partial<
+  Record<CompressionMethod, Compressor>
+>;
 
 /**
  * Options for creating a ZIP archive

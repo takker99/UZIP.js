@@ -92,7 +92,7 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
   ) {
     // 0x10000 + 22 = 0x10016
     // 22 = 0x16
-    if (!e || data.length - e > 0x10016) err(InvalidZipData);
+    if (!e || data.length - e > 0x10016) throw err(InvalidZipData);
   }
 
   /** The total number of entries in the central directory on this disk
@@ -102,7 +102,7 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
    * see APPNOTE.txt, section 4.4.21
    */
   let centralDirectoryCount = getUint16LE(data, e + 8);
-  if (!centralDirectoryCount) return {};
+  if (!centralDirectoryCount) return files;
 
   /** The offset of start of central directory with respect to the starting disk number
    *
@@ -148,19 +148,19 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
       fileName,
       nextOffset,
       localFileHeaderOffset,
-    ] = readZipHeader(
+    ] = readCentralDirectory(
       data,
       centralDirectoryOffset,
       isZip64,
     );
     centralDirectoryOffset = nextOffset;
     if (
-      !fltr?.({
+      !(fltr?.({
         name: fileName,
         size: compressedSize,
         originalSize: uncompressedSize,
         compression: compressionMethod,
-      })
+      }) ?? true)
     ) {
       continue;
     }
@@ -176,10 +176,12 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
         data.subarray(fileDataOffset, fileDataOffset + compressedSize),
         { out: new u8(uncompressedSize) },
       );
-    } else {err(
+    } else {
+      throw err(
         UnknownCompressionMethod,
         "unknown compression type " + compressionMethod,
-      );}
+      );
+    }
   }
   return files;
 };
@@ -220,7 +222,7 @@ const getFileDataOffset = (
  * 5. the offset of the next central directory file header
  * 6. the relative offset of local header
  */
-const readZipHeader = (
+const readCentralDirectory = (
   buffer: Uint8Array,
   centralDirectoryOffset: number,
   isZip64: boolean,
@@ -296,7 +298,7 @@ const readZipHeader = (
  * 2. the uncompressed size
  * 3. the relative offset of local header
  */
-const readZip64ExtraField = (
+export const readZip64ExtraField = (
   buffer: Uint8Array,
   extraFieldOffset: number,
 ): [number, number, number] => {

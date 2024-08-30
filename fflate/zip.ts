@@ -8,6 +8,8 @@ import {
 } from "./error.ts";
 import { mrg } from "./mrg.ts";
 import {
+  type CompressionMethodNumber,
+  compressionNameToNumber,
   flatten,
   type ZipAttributes,
   type ZipOptions,
@@ -36,14 +38,16 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
   /** The total size of central directory file headers and local file headers */
   let tot = 0;
   for (const [fileName, file, p] of flatten(data, "", opts ?? {})) {
-    const compression = p.level == 0 ? 0 : 8;
     const encodedFileName = encode(fileName);
     const encodedFileNameLength = encodedFileName.length;
     if (encodedFileNameLength > 0xffff) err(FilenameTooLong);
     const comment = p.comment;
     const encodedComment = comment ? encode(comment) : undefined;
     const encodedCommentLength = encodedComment?.length;
-    const fileData = compression ? p.deflate?.(file, p) : file;
+    const compressionMethod = p.compression
+      ? compressionNameToNumber[p.compression[0]]
+      : 0;
+    const fileData = p.compression?.[1]?.(file, p) ?? file;
     if (!fileData) err(UnknownCompressionMethod);
     files.push(mrg(p, {
       size: file.length,
@@ -54,7 +58,7 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
       u: encodedFileNameLength != fileName.length ||
         (!!encodedComment && (comment?.length != encodedCommentLength)),
       o,
-      compression,
+      compressionMethod,
     }));
 
     const exl = extraFieldLength(p.extra);
@@ -110,17 +114,8 @@ interface ZipData extends ZipHeaderFile {
   o: number;
 }
 
-/**
- * A stream that can be used to create a file in a ZIP archive
- */
-interface ZipInputFile extends ZipAttributes {
-  /**
-   * The filename to associate with the data provided to this stream. If you
-   * want a file in a subdirectory, use forward slashes as a separator (e.g.
-   * `directory/filename.ext`). This will still work on Windows.
-   */
-  filename: string;
-
+/** zip header file */
+interface ZipHeaderFile extends ZipAttributes {
   /**
    * The size of the file in bytes. This attribute may be invalid after
    * the file is added to the ZIP archive; it must be correct only before the
@@ -148,7 +143,7 @@ interface ZipInputFile extends ZipAttributes {
    * the spec in PKZIP's APPNOTE.txt, section 4.4.5. For example, 0 = no
    * compression, 8 = deflate, 14 = LZMA
    */
-  compression: number;
+  compressionMethod: CompressionMethodNumber;
 
   /**
    * Bits 1 and 2 of the general purpose bit flag, specified in PKZIP's
@@ -157,9 +152,6 @@ interface ZipInputFile extends ZipAttributes {
    */
   flag?: number;
 }
-
-/** zip header file */
-interface ZipHeaderFile extends Omit<ZipInputFile, "filename"> {}
 
 /** calculate extra field length
  *
@@ -215,7 +207,13 @@ const writeZipHeader = (
     ce != null
       ? CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE
       : LOCAL_FILE_HEADER_SIGNATURE,
-  ), byteOffset += 4;
+  );
+
+  // write version made by: (2 bytes)
+  // this field only exists in central directory file headers
+  // see APPNOTE.txt, section 4.4.2.
+  if (ce != null) buffer[byteOffset += 4] = file.os!, byteOffset += 2;
+  else byteOffset += 4;
 
   // write the version needed to extract: (2 bytes)
   // see APPNOTE.txt, section 4.4.3.
@@ -226,12 +224,7 @@ const writeZipHeader = (
   // - File is compressed using Deflate compression
   // - File is encrypted using traditional PKWARE encryption
   buffer[byteOffset] = 20;
-
-  // write version made by: (2 bytes)
-  // this field only exists in central directory file headers
-  // see APPNOTE.txt, section 4.4.2.
-  if (ce != null) buffer[++byteOffset] = file.os!, byteOffset++;
-  else byteOffset += 2;
+  byteOffset += 2;
 
   // write general purpose bit flag: (2 bytes)
   // see APPNOTE.txt, section 4.4.4.
@@ -241,8 +234,7 @@ const writeZipHeader = (
 
   // write compression method: (2 bytes)
   // see APPNOTE.txt, section 4.4.5.
-  buffer[byteOffset++] = file.compression & 0xff;
-  buffer[byteOffset++] = file.compression >> 8;
+  setUintLE(buffer, byteOffset, file.compressionMethod);
 
   // write date and time fields: (2 bytes each)
   // see APPNOTE.txt, section 4.4.6.
@@ -251,7 +243,7 @@ const writeZipHeader = (
   if (y < 0 || y > 119) err(InvalidDate);
   setUintLE(
     buffer,
-    byteOffset,
+    byteOffset += 2,
     (y << 25) | ((dt.getMonth() + 1) << 21) | (dt.getDate() << 16) |
       (dt.getHours() << 11) | (dt.getMinutes() << 5) | (dt.getSeconds() >> 1),
   ), byteOffset += 4;

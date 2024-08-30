@@ -3,6 +3,8 @@
  * @module
  */
 
+import { u8 } from "./shorthands.ts";
+
 /** read d, starting at bit p and mask with m */
 export const bits = (
   buffer: Uint8Array,
@@ -56,3 +58,10 @@ export const shft = (p: number): number => ((p + 7) / 8) | 0;
 // `| 0 ` is a common way to truncate a number to an integer in JavaScript.
 // This is valid if -2^31 - 1 < p < 231
 // Otherwise, you can use `Math.trunc(p)` instead.
+
+export const concat = (a: Uint8Array, b: Uint8Array): Uint8Array => {
+  const c = new u8(a.length + b.length);
+  c.set(a);
+  c.set(b, a.length);
+  return c;
+};
