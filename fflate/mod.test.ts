@@ -8,20 +8,22 @@ Deno.test("zip and unzip", async (t) => {
       "file2.txt": new Uint8Array([72, 69, 76, 76, 79]),
     };
 
-    assertEquals(expectOk(unzip(expectOk(zip(obj)))), {
-      "file1.txt": {
+    assertEquals([...expectOk(unzip(expectOk(zip(obj))))], [
+      {
+        name: "file1.txt",
         data: obj["file1.txt"],
         size: 5,
         originalSize: 5,
         compression: 0,
       },
-      "file2.txt": {
+      {
+        name: "file2.txt",
         data: obj["file2.txt"],
         size: 5,
         originalSize: 5,
         compression: 0,
       },
-    });
+    ]);
   });
 
   await t.step("UTF-8 filename", () => {
@@ -30,19 +32,21 @@ Deno.test("zip and unzip", async (t) => {
       "✅☺👍.txt": new Uint8Array([72, 69, 76, 76, 79]),
     };
 
-    assertEquals(expectOk(unzip(expectOk(zip(obj)))), {
-      "ファイル.txt": {
+    assertEquals([...expectOk(unzip(expectOk(zip(obj))))], [
+      {
+        name: "ファイル.txt",
         data: obj["ファイル.txt"],
         size: 5,
         originalSize: 5,
         compression: 0,
       },
-      "✅☺👍.txt": {
+      {
+        name: "✅☺👍.txt",
         data: obj["✅☺👍.txt"],
         size: 5,
         originalSize: 5,
         compression: 0,
       },
-    });
+    ]);
   });
 });

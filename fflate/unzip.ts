@@ -10,18 +10,6 @@ import { getUint16LE, getUint32LE, getUint64LE } from "@takker/bytes";
 import { createErr, createOk, type Result } from "./result.ts";
 
 /**
- * An unzipped archive. The full path of each file is used as the key,
- * and the file is the value
- */
-export interface Unzipped {
-  /** The files in the archive
-   *
-   * Each key is the full path of the file, and the value is the file itself.
-   */
-  [path: string]: UnzipFile;
-}
-
-/**
  *  A file extracted from a ZIP archive
  */
 export interface UnzipFile extends UnzipFileInfo {
@@ -37,6 +25,10 @@ export interface UnzipFile extends UnzipFileInfo {
  * Information about a file to be extracted from a ZIP archive
  */
 export interface UnzipFileInfo {
+  /**
+   * The full path of the file
+   */
+  name: string;
   /**
    * The compressed size of the file
    */
@@ -58,11 +50,11 @@ export interface UnzipFileInfo {
 
 /**
  * A filter for files to be extracted during the unzipping process
- * @param name The name of the current file being processed
+ *
  * @param file The info for the current file being processed
  * @returns Whether or not to extract the current file
  */
-export type UnzipFileFilter = (name: string, file: UnzipFileInfo) => boolean;
+export type UnzipFileFilter = (file: UnzipFileInfo) => boolean;
 
 /**
  * Options for expanding a ZIP archive
@@ -84,8 +76,7 @@ export interface UnzipOptions {
 export const unzip = (
   data: Uint8Array,
   opts?: UnzipOptions,
-): Result<Unzipped, InvalidZipDataError> => {
-  const files: Unzipped = {};
+): Result<Generator<UnzipFile, void, unknown>, InvalidZipDataError> => {
   let e = data.length - MIN_END_OF_CENTRAL_DIRECTORY_SIZE;
   for (
     ;
@@ -99,80 +90,82 @@ export const unzip = (
     }
   }
 
-  /** The total number of entries in the central directory on this disk
-   *
-   * the size is 2 bytes if the archive is not in ZIP64 format, and 8 bytes otherwise
-   *
-   * see APPNOTE.txt, section 4.4.21
-   */
-  let centralDirectoryCount = getUint16LE(data, e + 8);
-  if (!centralDirectoryCount) return createOk(files);
-
-  /** The offset of start of central directory with respect to the starting disk number
-   *
-   * the size is 2 bytes if the archive is not in ZIP64 format, and 8 bytes otherwise
-   *
-   * see APPNOTE.txt, section 4.4.24
-   */
-  let centralDirectoryOffset = getUint32LE(data, e + 16);
-
-  /** whether the archive is in ZIP64 format */
-  let isZip64 = centralDirectoryOffset == 0xffffffff ||
-    centralDirectoryCount == 0xffff;
-  if (isZip64) {
-    /** relative offset of the zip64 end of central directory record (8 bytes)
+  return createOk(function* () {
+    /** The total number of entries in the central directory on this disk
      *
-     * see APPNOTE.txt, section 4.3.15
+     * the size is 2 bytes if the archive is not in ZIP64 format, and 8 bytes otherwise
+     *
+     * see APPNOTE.txt, section 4.4.21
      */
-    const zip64EndOfCentralDirectoryRecordOffset = getUint32LE(data, e - 12);
-    isZip64 = getUint32LE(data, zip64EndOfCentralDirectoryRecordOffset) ==
-      ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE;
-    if (isZip64) {
-      // read total number of entries in the central dir on this disk: (8 bytes)
-      // see APPNOTE.txt, section 4.4.21
-      centralDirectoryCount = getUint32LE(
-        data,
-        zip64EndOfCentralDirectoryRecordOffset + 32,
-      );
+    let centralDirectoryCount = getUint16LE(data, e + 8);
+    if (!centralDirectoryCount) return;
 
-      // read offset of start of central directory with respect to the starting disk number: (8 bytes)
-      // see APPNOTE.txt, section 4.4.24
-      centralDirectoryOffset = getUint32LE(
-        data,
-        zip64EndOfCentralDirectoryRecordOffset + 48,
-      );
+    /** The offset of start of central directory with respect to the starting disk number
+     *
+     * the size is 2 bytes if the archive is not in ZIP64 format, and 8 bytes otherwise
+     *
+     * see APPNOTE.txt, section 4.4.24
+     */
+    let centralDirectoryOffset = getUint32LE(data, e + 16);
+
+    /** whether the archive is in ZIP64 format */
+    let isZip64 = centralDirectoryOffset == 0xffffffff ||
+      centralDirectoryCount == 0xffff;
+    if (isZip64) {
+      /** relative offset of the zip64 end of central directory record (8 bytes)
+       *
+       * see APPNOTE.txt, section 4.3.15
+       */
+      const zip64EndOfCentralDirectoryRecordOffset = getUint32LE(data, e - 12);
+      isZip64 = getUint32LE(data, zip64EndOfCentralDirectoryRecordOffset) ==
+        ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE;
+      if (isZip64) {
+        // read total number of entries in the central dir on this disk: (8 bytes)
+        // see APPNOTE.txt, section 4.4.21
+        centralDirectoryCount = getUint32LE(
+          data,
+          zip64EndOfCentralDirectoryRecordOffset + 32,
+        );
+
+        // read offset of start of central directory with respect to the starting disk number: (8 bytes)
+        // see APPNOTE.txt, section 4.4.24
+        centralDirectoryOffset = getUint32LE(
+          data,
+          zip64EndOfCentralDirectoryRecordOffset + 48,
+        );
+      }
     }
-  }
-  for (let _ = 0; _ < centralDirectoryCount; ++_) {
-    const [
-      compressionMethod,
-      compressedSize,
-      uncompressedSize,
-      fileName,
-      nextOffset,
-      localFileHeaderOffset,
-    ] = readCentralDirectory(
-      data,
-      centralDirectoryOffset,
-      isZip64,
-    );
-    centralDirectoryOffset = nextOffset;
-    const file: UnzipFileInfo = {
-      size: compressedSize,
-      originalSize: uncompressedSize,
-      compression: compressionMethod,
-    };
-    if (!(opts?.filter?.(fileName, file) ?? true)) continue;
-    const fileDataOffset = getFileDataOffset(data, localFileHeaderOffset);
-    files[fileName] = {
-      data: data.slice(
-        fileDataOffset,
-        fileDataOffset + compressedSize,
-      ),
-      ...file,
-    };
-  }
-  return createOk(files);
+    for (let _ = 0; _ < centralDirectoryCount; ++_) {
+      const [
+        compressionMethod,
+        compressedSize,
+        uncompressedSize,
+        fileName,
+        nextOffset,
+        localFileHeaderOffset,
+      ] = readCentralDirectory(
+        data,
+        centralDirectoryOffset,
+        isZip64,
+      );
+      centralDirectoryOffset = nextOffset;
+      const file: UnzipFileInfo = {
+        name: fileName,
+        size: compressedSize,
+        originalSize: uncompressedSize,
+        compression: compressionMethod,
+      };
+      if (!(opts?.filter?.(file) ?? true)) continue;
+      const fileDataOffset = getFileDataOffset(data, localFileHeaderOffset);
+      yield {
+        data: data.slice(
+          fileDataOffset,
+          fileDataOffset + compressedSize,
+        ),
+        ...file,
+      };
+    }
+  }());
 };
 
 /** get a file data offset
