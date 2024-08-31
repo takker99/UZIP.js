@@ -93,6 +93,13 @@ export const invalidDateError = (
   mtime,
 });
 
+export interface InvalidZipDataError {
+  code: typeof InvalidZipData;
+}
+export const invalidZipDataError = (): InvalidZipDataError => ({
+  code: InvalidZipData,
+});
+
 export const err = (
   ind: flateErrorCode,
   msg?: string,

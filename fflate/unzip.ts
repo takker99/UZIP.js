@@ -1,6 +1,4 @@
-import type { InflateOptions } from "./inflate.ts";
-import { err, InvalidZipData, UnknownCompressionMethod } from "./error.ts";
-import { u8 } from "./shorthands.ts";
+import { type InvalidZipDataError, invalidZipDataError } from "./error.ts";
 import { decode } from "./str-buffer.ts";
 import {
   END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE,
@@ -9,6 +7,7 @@ import {
   ZIP64_END_OF_CENTRAL_DIRECTORY_RECORD_SIGNATURE,
 } from "./constants.ts";
 import { getUint16LE, getUint32LE, getUint64LE } from "@takker/bytes";
+import { createErr, createOk, type Result } from "./result.ts";
 
 /**
  * An unzipped archive. The full path of each file is used as the key,
@@ -19,18 +18,25 @@ export interface Unzipped {
    *
    * Each key is the full path of the file, and the value is the file itself.
    */
-  [path: string]: Uint8Array;
+  [path: string]: UnzipFile;
+}
+
+/**
+ *  A file extracted from a ZIP archive
+ */
+export interface UnzipFile extends UnzipFileInfo {
+  /**
+   * The data of the file
+   *
+   * This is compressed if {@linkcode UnzipFileInfo.compression} is not 0.
+   */
+  data: Uint8Array;
 }
 
 /**
  * Information about a file to be extracted from a ZIP archive
  */
 export interface UnzipFileInfo {
-  /**
-   * The name of the file
-   */
-  name: string;
-
   /**
    * The compressed size of the file
    */
@@ -52,10 +58,11 @@ export interface UnzipFileInfo {
 
 /**
  * A filter for files to be extracted during the unzipping process
+ * @param name The name of the current file being processed
  * @param file The info for the current file being processed
  * @returns Whether or not to extract the current file
  */
-export type UnzipFileFilter = (file: UnzipFileInfo) => boolean;
+export type UnzipFileFilter = (name: string, file: UnzipFileInfo) => boolean;
 
 /**
  * Options for expanding a ZIP archive
@@ -65,14 +72,6 @@ export interface UnzipOptions {
    * A filter function to extract only certain files from a ZIP archive
    */
   filter?: UnzipFileFilter;
-
-  /** DEFLATE data expander
-   *
-   * @param data The data to decompress
-   * @param opts The decompression options
-   * @returns The decompressed version of the data
-   */
-  inflate?: (data: Uint8Array, opts?: InflateOptions) => Uint8Array;
 }
 
 /**
@@ -82,7 +81,10 @@ export interface UnzipOptions {
  * @param opts The ZIP extraction options
  * @returns The decompressed files
  */
-export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
+export const unzip = (
+  data: Uint8Array,
+  opts?: UnzipOptions,
+): Result<Unzipped, InvalidZipDataError> => {
   const files: Unzipped = {};
   let e = data.length - MIN_END_OF_CENTRAL_DIRECTORY_SIZE;
   for (
@@ -92,7 +94,9 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
   ) {
     // 0x10000 + 22 = 0x10016
     // 22 = 0x16
-    if (!e || data.length - e > 0x10016) throw err(InvalidZipData);
+    if (!e || data.length - e > 0x10016) {
+      return createErr(invalidZipDataError());
+    }
   }
 
   /** The total number of entries in the central directory on this disk
@@ -102,7 +106,7 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
    * see APPNOTE.txt, section 4.4.21
    */
   let centralDirectoryCount = getUint16LE(data, e + 8);
-  if (!centralDirectoryCount) return files;
+  if (!centralDirectoryCount) return createOk(files);
 
   /** The offset of start of central directory with respect to the starting disk number
    *
@@ -139,7 +143,6 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
       );
     }
   }
-  const fltr = opts?.filter;
   for (let _ = 0; _ < centralDirectoryCount; ++_) {
     const [
       compressionMethod,
@@ -154,36 +157,22 @@ export const unzip = (data: Uint8Array, opts?: UnzipOptions): Unzipped => {
       isZip64,
     );
     centralDirectoryOffset = nextOffset;
-    if (
-      !(fltr?.({
-        name: fileName,
-        size: compressedSize,
-        originalSize: uncompressedSize,
-        compression: compressionMethod,
-      }) ?? true)
-    ) {
-      continue;
-    }
+    const file: UnzipFileInfo = {
+      size: compressedSize,
+      originalSize: uncompressedSize,
+      compression: compressionMethod,
+    };
+    if (!(opts?.filter?.(fileName, file) ?? true)) continue;
     const fileDataOffset = getFileDataOffset(data, localFileHeaderOffset);
-    const inflate = opts?.inflate;
-    if (!compressionMethod) {
-      files[fileName] = data.slice(
+    files[fileName] = {
+      data: data.slice(
         fileDataOffset,
         fileDataOffset + compressedSize,
-      );
-    } else if (compressionMethod == 8 && inflate) {
-      files[fileName] = inflate(
-        data.subarray(fileDataOffset, fileDataOffset + compressedSize),
-        { out: new u8(uncompressedSize) },
-      );
-    } else {
-      throw err(
-        UnknownCompressionMethod,
-        "unknown compression type " + compressionMethod,
-      );
-    }
+      ),
+      ...file,
+    };
   }
-  return files;
+  return createOk(files);
 };
 
 /** get a file data offset
