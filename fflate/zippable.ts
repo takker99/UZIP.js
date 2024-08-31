@@ -76,8 +76,11 @@ export interface ZipAttributes {
    */
   comment?: string;
 
-  /** When the file was last modified. Defaults to the current time.  */
-  mtime?: string | number | Date;
+  /** When the file was last modified. Defaults to the current time.
+   *
+   * if not set, it will be set to the current time.
+   */
+  mtime?: Date;
 
   /**
    * The compression method to use for this file.

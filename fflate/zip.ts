@@ -129,7 +129,7 @@ type ZipData = [
   // 4. compression method
   CompressionMethodNumber | 0,
   // 5. mtime
-  string | number | Date | undefined,
+  Date | undefined,
   // 6. CRC-32
   number,
   // 7. compressed size
@@ -194,7 +194,7 @@ const writeZipHeader = (
   unicode: boolean,
   flag: number,
   compressionMethod: CompressionMethodNumber | 0,
-  mtime: string | number | Date | undefined,
+  mtime: Date | undefined,
   crc: number,
   compressedSize: number,
   uncompressedSize: number,
@@ -245,8 +245,8 @@ const writeZipHeader = (
 
   // write date and time fields: (2 bytes each)
   // see APPNOTE.txt, section 4.4.6.
-  const dt = new Date(mtime == null ? Date.now() : mtime),
-    y = dt.getFullYear() - 1980;
+  const dt = mtime ?? new Date();
+  const y = dt.getFullYear() - 1980;
   if (y < 0 || y > 119) return createErr(invalidDateError(fileNameStr, dt));
   setUintLE(
     buffer,
