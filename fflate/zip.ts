@@ -45,7 +45,7 @@ export const zip = (
   let o = 0;
   /** The total size of central directory file headers and local file headers */
   let tot = 0;
-  for (const [fileName, file, p] of flatten(data, "", opts ?? {})) {
+  for (const [fileName, file, p] of flatten(data, opts)) {
     const encodedFileName = encode(fileName);
     const encodedFileNameLength = encodedFileName.length;
     if (encodedFileNameLength > 0xffff) {

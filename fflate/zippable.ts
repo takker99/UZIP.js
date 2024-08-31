@@ -149,15 +149,35 @@ export interface Zippable {
 }
 
 /** flatten a directory structure */
-export function* flatten(
+export const flatten = (
   directory: Zippable,
-  path: string,
+  globalOptions: ZipOptions = {},
+): Generator<[string, Uint8Array, FlattenedZipOptions], void, unknown> =>
+  flattenImpl(directory, globalOptions, "", new Set());
+
+export function* flattenImpl(
+  directory: Zippable,
   globalOptions: ZipOptions,
+  path: string,
+  yieldedPath: Set<string>,
 ): Generator<[string, Uint8Array, FlattenedZipOptions], void, unknown> {
   for (const k in directory) {
     let val = directory[k],
       n = path + k,
       op: FlattenedZipOptions = globalOptions;
+    const slashIndex = k.indexOf("/");
+    if (slashIndex > -1) {
+      const dir = k.slice(0, slashIndex);
+      const rest = k.slice(slashIndex + 1);
+      yield* flattenImpl(
+        { [dir]: { [rest]: val } },
+        globalOptions,
+        path,
+        yieldedPath,
+      );
+      continue;
+    }
+
     if (Array.isArray(val)) {
       let { compression, ...rest } = val[1];
       val = val[0];
@@ -171,10 +191,18 @@ export function* flatten(
       op = { ...globalOptions, ...rest, compression };
     }
     if (val instanceof u8) {
+      if (yieldedPath.has(n)) {
+        throw new Error(`Duplicate file: ${n}`);
+      }
       yield [n, val, op];
+      yieldedPath.add(n);
     } else {
-      yield [n += "/", empty, op];
-      yield* flatten(val, n, globalOptions);
+      // ignore duplicate directories
+      if (!yieldedPath.has(n += "/")) {
+        yield [n, empty, {}];
+      }
+      yieldedPath.add(n);
+      yield* flattenImpl(val, op, n, yieldedPath);
     }
   }
 }

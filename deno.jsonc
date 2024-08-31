@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "exports": "./fflate/mod.ts",
   "tasks": {
-    "fix": "deno fmt && deno lint --fix && deno doc --lint ./fflate/mod.ts && deno check --remote **/*.ts && deno publish --dry-run --allow-dirty",
-    "check": "deno fmt --check && deno lint && deno doc --lint ./fflate/mod.ts && deno check --remote **/*.ts && deno publish --dry-run --allow-dirty",
-    "test": "deno test --doc"
+    "fix": "deno fmt && deno lint --fix && deno doc --lint ./fflate/mod.ts && deno test --doc --parallel --shuffle && deno publish --dry-run --allow-dirty",
+    "check": "deno fmt --check && deno lint && deno doc --lint ./fflate/mod.ts && deno test --doc --parallel --shuffle && deno publish --dry-run --allow-dirty",
+    "coverage": "deno test --doc --parallel --shuffle --coverage && deno coverage --html"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.2",
