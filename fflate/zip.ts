@@ -113,7 +113,7 @@ export const zip = (
       // file comment length
       (metadata[13]?.length ?? 0);
   }
-  writeZipFooter(out, o, files.length, cdl, oe);
+  writeEndOfCentralDirectory(out, o, files.length, cdl, oe);
   return createOk(out);
 };
 
@@ -344,7 +344,7 @@ const writeZipHeader = (
   return createOk(byteOffset);
 };
 
-/** write zip footer (end of central directory)
+/** write end of central directory
  *
  * This structure is described in PKZIP's APPNOTE.txt, section 4.3.16.
  *
@@ -354,7 +354,7 @@ const writeZipHeader = (
  * @param centralDirectorySize - The size of the central directory
  * @param centralDirectoryOffsetWithDisk - The offset of start of central directory with respect to the starting disk number
  */
-const writeZipFooter = (
+const writeEndOfCentralDirectory = (
   buffer: Uint8Array,
   endOfCentralDirectoryOffset: number,
   centralDirectoryCount: number,
