@@ -157,7 +157,7 @@ type ZipData = [
   Record<number, Uint8Array> | undefined,
   // 12. extra field length
   number,
-  // 13. attrs
+  // 13. external file attributes
   number | undefined,
   // 14. os
   number | undefined,
@@ -215,7 +215,7 @@ const writeZipHeader = (
   fileNameStr: string,
   extra: Record<number, Uint8Array> | undefined,
   extraFieldLength: number,
-  attrs?: number,
+  externalFileAttributes?: number,
   os?: number,
   comment?: Uint8Array,
   localHeaderOffset?: number,
@@ -301,7 +301,7 @@ const writeZipHeader = (
 
     // write file comment length: (2 bytes)
     // see APPNOTE.txt, section 4.4.12
-    setUintLE(buffer, byteOffset, commentLength!);
+    if (commentLength) setUintLE(buffer, byteOffset, commentLength);
 
     // skip disk number start: (2 bytes)
     // see APPNOTE.txt, section 4.4.13
@@ -311,7 +311,9 @@ const writeZipHeader = (
 
     // write external file attributes: (4 bytes)
     // see APPNOTE.txt, section 4.4.15
-    setUintLE(buffer, byteOffset + 6, attrs!);
+    if (externalFileAttributes) {
+      setUintLE(buffer, byteOffset + 6, externalFileAttributes);
+    }
 
     // write relative offset of local header: (4 bytes)
     // see APPNOTE.txt, section 4.4.16

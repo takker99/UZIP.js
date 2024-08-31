@@ -37,7 +37,9 @@ export interface ZipAttributes {
   os?: number;
 
   /**
-   * The file's attributes. These are traditionally somewhat complicated
+   * The file's attributes.
+   * The value is called external file attributes and defined by PKZIP's APPNOTE.txt, section 4.4.15.
+   * These are traditionally somewhat complicated
    * and platform-dependent, so using them is scarcely necessary. However,
    * here is a representation of what this is, bit by bit:
    *
