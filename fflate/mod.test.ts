@@ -1,3 +1,4 @@
+import { InvalidZipData } from "./error.ts";
 import { expectOk, unzip, zip } from "./mod.ts";
 import { assertEquals } from "@std/assert";
 
@@ -23,6 +24,13 @@ Deno.test("zip and unzip", async (t) => {
       ),
     );
     assertEquals([...expectOk(unzip(zipped))], []);
+  });
+
+  await t.step("invalid", () => {
+    assertEquals(
+      unzip(new TextEncoder().encode("PK: This is not a zip file.")),
+      { ok: false, err: { code: InvalidZipData } },
+    );
   });
 
   await t.step("text files", () => {
