@@ -92,8 +92,13 @@ export const zip = (
       (encodedCommentLength ?? 0) + // file comment length
       compressedSize; // file data length
   }
+  const zipComment = opts?.comment;
+  const encodedZipComment = zipComment ? encode(zipComment) : undefined;
+  const encodedZipCommentLength = encodedZipComment?.length ?? 0;
   /** The output buffer */
-  const out = new u8(tot + MIN_END_OF_CENTRAL_DIRECTORY_SIZE);
+  const out = new u8(
+    tot + MIN_END_OF_CENTRAL_DIRECTORY_SIZE + encodedZipCommentLength,
+  );
   /** The offset of start of central directory with respect to the starting disk number */
   const oe = o;
   /** The total size of central directory file headers */
@@ -113,7 +118,15 @@ export const zip = (
       // file comment length
       (metadata[13]?.length ?? 0);
   }
-  writeEndOfCentralDirectory(out, o, files.length, cdl, oe);
+  writeEndOfCentralDirectory(
+    out,
+    o,
+    files.length,
+    cdl,
+    oe,
+    encodedZipComment,
+    encodedZipCommentLength,
+  );
   return createOk(out);
 };
 
@@ -353,6 +366,8 @@ const writeZipHeader = (
  * @param centralDirectoryCount - The total number of entries in the central directory
  * @param centralDirectorySize - The size of the central directory
  * @param centralDirectoryOffsetWithDisk - The offset of start of central directory with respect to the starting disk number
+ * @param comment - The .ZIP file comment
+ * @param commentLength - The .ZIP file comment length
  */
 const writeEndOfCentralDirectory = (
   buffer: Uint8Array,
@@ -360,6 +375,8 @@ const writeEndOfCentralDirectory = (
   centralDirectoryCount: number,
   centralDirectorySize: number,
   centralDirectoryOffsetWithDisk: number,
+  comment?: Uint8Array,
+  commentLength?: number,
 ): void => {
   // Signature: (4 bytes)
   setUintLE(
@@ -394,9 +411,13 @@ const writeEndOfCentralDirectory = (
     centralDirectoryOffsetWithDisk,
   );
 
-  // (Skip) .ZIP file comment length: (2 bytes)
-  // see APPNOTE.txt, section 4.4.25.
+  if (comment && commentLength) {
+    // .ZIP file comment length: (2 bytes)
+    // see APPNOTE.txt, section 4.4.25.
+    setUintLE(buffer, endOfCentralDirectoryOffset + 20, commentLength);
 
-  // (Skip) .ZIP file comment: (variable)
-  // see APPNOTE.txt, section 4.4.26.
+    // .ZIP file comment: (variable)
+    // see APPNOTE.txt, section 4.4.26.
+    buffer.set(comment, endOfCentralDirectoryOffset + 22);
+  }
 };
