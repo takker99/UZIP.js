@@ -12,6 +12,12 @@
     "@takker/bytes": "jsr:@takker/bytes@^0.1.0",
     "@takker/crc": "jsr:@takker/crc@^0.1.0"
   },
+  "unstable": [
+    "fmt-html",
+    "fmt-css",
+    "fmt-yaml",
+    "fmt-component"
+  ],
   "exclude": [
     "docs"
   ],

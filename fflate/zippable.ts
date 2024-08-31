@@ -1,13 +1,38 @@
+import { empty } from "./constants.ts";
 import { u8 } from "./shorthands.ts";
 
-/**
- * Attributes for files added to a ZIP archive object
- */
+/** Attributes for files added to a ZIP archive object */
 export interface ZipAttributes {
   /**
-   * The operating system of origin for this file. The value is defined
-   * by PKZIP's APPNOTE.txt, section 4.4.2.2. For example, 0 (the default)
-   * is MS/DOS, 3 is Unix, 19 is macOS.
+   * The operating system of origin for this file.
+   * The value is defined by PKZIP's APPNOTE.txt, section 4.4.2.2.
+   *
+   * According to the spec, the following values are possible:
+   * | Value | OS                                           |
+   * |-------|----------------------------------------------|
+   * | 0     | MS-DOS and OS/2 (FAT / VFAT / FAT32 file systems) |
+   * | 1     | Amiga                                        |
+   * | 2     | OpenVMS                                      |
+   * | 3     | Unix                                         |
+   * | 4     | VM/CMS                                       |
+   * | 5     | Atari ST                                     |
+   * | 6     | OS/2 H.P.F.S.                                |
+   * | 7     | Macintosh                                    |
+   * | 8     | Z-System                                     |
+   * | 9     | CP/M                                         |
+   * | 10    | Windows NTFS                                 |
+   * | 11    | MVS (OS/390 - Z/OS)                          |
+   * | 12    | VSE                                          |
+   * | 13    | Acorn Risc                                   |
+   * | 14    | VFAT                                         |
+   * | 15    | alternate MVS                                |
+   * | 16    | BeOS                                         |
+   * | 17    | Tandem                                       |
+   * | 18    | OS/400                                       |
+   * | 19    | OS X (Darwin)                                |
+   * | ~ 225 | unused                                       |
+   *
+   * @default 0
    */
   os?: number;
 
@@ -51,11 +76,19 @@ export interface ZipAttributes {
    */
   comment?: string;
 
-  /**
-   * When the file was last modified. Defaults to the current time.
-   */
+  /** When the file was last modified. Defaults to the current time.  */
   mtime?: string | number | Date;
 
+  /**
+   * The compression method to use for this file.
+   * Available methods are defined in {@linkcode CompressionMethod}.
+   *
+   * If you set any compression method as a string, you must also pass the mapping of the compression method to the {@linkcode Compress} to {@linkcode ZipOptions.compressionMethods}.
+   *
+   * You can set to `undefined` not to use any compression method.
+   *
+   * If you want to use a custom compression method, you can set it to a tuple of the {@linkcode CompressionMethod} and the {@linkcode Compress}.
+   */
   compression?: CompressionMethod | [CompressionMethod, Compress];
 }
 
@@ -91,7 +124,12 @@ export interface ZipOptions extends Omit<ZipAttributes, "compression"> {
 }
 
 export interface FlattenedZipOptions
-  extends Omit<ZipOptions, "compressionMethods"> {
+  extends Omit<ZipAttributes, "compression"> {
+  /**
+   * A tuple of the {@linkcode CompressionMethod} and the {@linkcode Compress}.
+   *
+   * This is set to `undefined` if you don't want to compress the file.
+   */
   compression?: [CompressionMethod, Compress];
 }
 
@@ -135,7 +173,7 @@ export function* flatten(
     if (val instanceof u8) {
       yield [n, val, op];
     } else {
-      yield [n += "/", new u8(), op];
+      yield [n += "/", empty, op];
       yield* flatten(val, n, globalOptions);
     }
   }

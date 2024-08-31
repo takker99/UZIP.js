@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { flatten, type Zippable } from "./zippable.ts";
+import { flatten, type ZipOptions, type Zippable } from "./zippable.ts";
+import { deflate } from "./deflate.ts";
 
 Deno.test("flatten - single file", () => {
   const file = new Uint8Array([72, 69, 76, 76, 79]);
@@ -48,9 +49,10 @@ Deno.test("flatten - nested directory with options", () => {
       "file2.txt": file2,
     },
   };
-  const options = {
-    compressionLevel: 9,
-    os: 3,
+  const options: ZipOptions = {
+    compressionMethods: {
+      deflate: (data) => deflate(data),
+    },
   };
   assertEquals([...flatten(nested, "", options)], [
     ["dir1/", new Uint8Array(), options],

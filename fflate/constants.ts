@@ -158,3 +158,6 @@ export const DATA_DESCRIPTOR_SIZE = 12;
  * see APPNOTE.txt, section 4.3.9.1
  */
 export const ZIP64_DATA_DESCRIPTOR_SIZE = 20;
+
+/** empty buffer */
+export const empty = /*#__PURE__*/ new u8();
