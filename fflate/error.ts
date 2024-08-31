@@ -51,6 +51,48 @@ export interface FlateError extends Error {
   code: flateErrorCode;
 }
 
+export interface FileNameTooLongError {
+  code: typeof FilenameTooLong;
+  name: string;
+}
+export const fileNameTooLongError = (
+  fileName: string,
+): FileNameTooLongError => ({
+  code: FilenameTooLong,
+  name: fileName,
+});
+
+export interface ExtraFieldTooLongError {
+  code: typeof ExtraFieldTooLong;
+  name: string;
+  key: number;
+  value: Uint8Array;
+}
+export const extraFieldTooLongError = (
+  fileName: string,
+  key: number,
+  value: Uint8Array,
+): ExtraFieldTooLongError => ({
+  code: ExtraFieldTooLong,
+  name: fileName,
+  key,
+  value,
+});
+
+export interface InvalidDateError {
+  code: typeof InvalidDate;
+  name: string;
+  mtime: Date;
+}
+export const invalidDateError = (
+  fileName: string,
+  mtime: Date,
+): InvalidDateError => ({
+  code: InvalidDate,
+  name: fileName,
+  mtime,
+});
+
 export const err = (
   ind: flateErrorCode,
   msg?: string,

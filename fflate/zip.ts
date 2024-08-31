@@ -1,10 +1,11 @@
 import { encode } from "./str-buffer.ts";
 import {
-  err,
-  ExtraFieldTooLong,
-  FilenameTooLong,
-  InvalidDate,
-  UnknownCompressionMethod,
+  type ExtraFieldTooLongError,
+  extraFieldTooLongError,
+  type FileNameTooLongError,
+  fileNameTooLongError,
+  type InvalidDateError,
+  invalidDateError,
 } from "./error.ts";
 import {
   type CompressionMethodNumber,
@@ -23,6 +24,7 @@ import {
   MIN_END_OF_CENTRAL_DIRECTORY_SIZE,
   MIN_LOCAL_FILE_HEADER_SIZE,
 } from "./constants.ts";
+import { createErr, createOk, isErr, type Result, unwrapOk } from "./result.ts";
 
 /**
  * Synchronously creates a ZIP file. Prefer using `zip` for better performance
@@ -31,7 +33,13 @@ import {
  * @param opts The main options, merged with per-file options
  * @returns The generated ZIP archive
  */
-export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
+export const zip = (
+  data: Zippable,
+  opts?: ZipOptions,
+): Result<
+  Uint8Array,
+  FileNameTooLongError | ExtraFieldTooLongError | InvalidDateError
+> => {
   const files: ZipData[] = [];
   /** The offset of the next local file header */
   let o = 0;
@@ -40,14 +48,18 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
   for (const [fileName, file, p] of flatten(data, "", opts ?? {})) {
     const encodedFileName = encode(fileName);
     const encodedFileNameLength = encodedFileName.length;
-    if (encodedFileNameLength > 0xffff) err(FilenameTooLong);
+    if (encodedFileNameLength > 0xffff) {
+      return createErr(fileNameTooLongError(fileName));
+    }
     const comment = p.comment;
     const encodedComment = comment ? encode(comment) : undefined;
     const encodedCommentLength = encodedComment?.length;
     const [compressionMethod, compress] = p.compression ?? [];
     const fileData = compress?.(file) ?? file;
-    if (!fileData) err(UnknownCompressionMethod);
     const compressedSize = fileData.length;
+    const res = getExtraFieldLength(fileName, p.extra);
+    if (isErr(res)) return res;
+    const extraFieldLength = unwrapOk(res);
     files.push([
       o,
       fileData,
@@ -60,13 +72,13 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
       compressedSize,
       file.length,
       encodedFileName,
+      fileName,
       p.extra,
+      extraFieldLength,
       p.attrs,
       p.os,
       encodedComment,
     ]);
-
-    const extraFieldLength = getExtraFieldLength(p.extra);
 
     // add the size of the local file header
     o += MIN_LOCAL_FILE_HEADER_SIZE +
@@ -87,7 +99,9 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
   /** The total size of central directory file headers */
   const cdl = tot - o;
   for (const [offset, fileData, ...metadata] of files) {
-    const fileDataOffset = writeZipHeader(out, offset, ...metadata);
+    const res = writeZipHeader(out, offset, ...metadata);
+    if (isErr(res)) return res;
+    const fileDataOffset = unwrapOk(res);
     out.set(fileData, fileDataOffset);
     // In this loop, `o` represents the offset of the central directory file header
     writeZipHeader(out, o, ...metadata, offset);
@@ -97,10 +111,10 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
       // the size of the local file header
       fileDataOffset - offset +
       // file comment length
-      (metadata[11]?.length ?? 0);
+      (metadata[13]?.length ?? 0);
   }
   writeZipFooter(out, o, files.length, cdl, oe);
-  return out;
+  return createOk(out);
 };
 
 type ZipData = [
@@ -124,13 +138,17 @@ type ZipData = [
   number,
   // 9. filename
   Uint8Array,
-  // 10. extra
+  // 10. filename (string)
+  string,
+  // 11. extra
   Record<number, Uint8Array> | undefined,
-  // 11. attrs
+  // 12. extra field length
+  number,
+  // 13. attrs
   number | undefined,
-  // 12. os
+  // 14. os
   number | undefined,
-  // 13. comment
+  // 15. comment
   Uint8Array | undefined,
 ];
 
@@ -141,17 +159,21 @@ type ZipData = [
  * @param extra - The extra field to calculate the length of
  * @returns The total length of the extra fields
  */
-const getExtraFieldLength = (extra?: Record<number, Uint8Array>): number => {
-  if (!extra) return 0;
+const getExtraFieldLength = (
+  fileName: string,
+  extra?: Record<number, Uint8Array>,
+): Result<number, ExtraFieldTooLongError> => {
+  if (!extra) return createOk(0);
   let le = 0;
   for (const k in extra) {
     const l = extra[k].length;
-    if (l > 0xffff) err(ExtraFieldTooLong);
+    // @ts-ignore k must be a number
+    if (l > 0xffff) createErr(extraFieldTooLongError(fileName, k, extra[k]));
     // add the data size (`l`), the size of an ID field (2 bytes), and the size of a data size field (2 bytes)
     // see APPNOTE.txt, section 4.5.1
     le += l + 4;
   }
-  return le;
+  return createOk(le);
 };
 
 /** write zip header
@@ -177,12 +199,14 @@ const writeZipHeader = (
   compressedSize: number,
   uncompressedSize: number,
   fileName: Uint8Array,
+  fileNameStr: string,
   extra: Record<number, Uint8Array> | undefined,
+  extraFieldLength: number,
   attrs?: number,
   os?: number,
   comment?: Uint8Array,
   localHeaderOffset?: number,
-): number => {
+): Result<number, InvalidDateError> => {
   // write the signature (4 bytes)
   setUintLE(
     buffer,
@@ -223,7 +247,7 @@ const writeZipHeader = (
   // see APPNOTE.txt, section 4.4.6.
   const dt = new Date(mtime == null ? Date.now() : mtime),
     y = dt.getFullYear() - 1980;
-  if (y < 0 || y > 119) err(InvalidDate);
+  if (y < 0 || y > 119) return createErr(invalidDateError(fileNameStr, dt));
   setUintLE(
     buffer,
     byteOffset += 2,
@@ -253,8 +277,6 @@ const writeZipHeader = (
   // see APPNOTE.txt, section 4.4.10
   const fileNameLength = fileName.length;
   setUintLE(buffer, byteOffset + 12, fileNameLength);
-
-  const extraFieldLength = getExtraFieldLength(extra);
 
   // write extra field length: (2 bytes)
   // see APPNOTE.txt, section 4.4.11
@@ -319,7 +341,7 @@ const writeZipHeader = (
   if (commentLength) {
     buffer.set(comment, byteOffset), byteOffset += commentLength;
   }
-  return byteOffset;
+  return createOk(byteOffset);
 };
 
 /** write zip footer (end of central directory)

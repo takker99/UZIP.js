@@ -11,3 +11,4 @@ export * from "./unzlib.ts";
 export * from "./gzip.ts";
 export * from "./gunzip.ts";
 export * from "./decompress.ts";
+export * from "./result.ts";
