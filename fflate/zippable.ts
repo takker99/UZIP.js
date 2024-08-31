@@ -1,6 +1,3 @@
-import type { DeflateOptions } from "./deflate.ts";
-import type { GzipOptions } from "./gzip.ts";
-import { mrg } from "./mrg.ts";
 import { u8 } from "./shorthands.ts";
 
 /**
@@ -57,21 +54,17 @@ export interface ZipAttributes {
   /**
    * When the file was last modified. Defaults to the current time.
    */
-  mtime?: GzipOptions["mtime"];
+  mtime?: string | number | Date;
 
-  compression?: CompressionMethod | [CompressionMethod, Compressor];
+  compression?: CompressionMethod | [CompressionMethod, Compress];
 }
 
 /** data compresser
  *
  * @param data The data to compress
- * @param opts The compression options
  * @returns The deflated version of the data
  */
-export type Compressor = (
-  data: Uint8Array,
-  options?: DeflateOptions,
-) => Uint8Array;
+export type Compress = (data: Uint8Array) => Uint8Array;
 
 export const compressionNameToNumber = {
   deflate: 8,
@@ -87,20 +80,19 @@ export const compressionNumberToName = {
 } as const;
 
 export type CompressionMethodMap = Partial<
-  Record<CompressionMethod, Compressor>
+  Record<CompressionMethod, Compress>
 >;
 
 /**
  * Options for creating a ZIP archive
  */
-export interface ZipOptions
-  extends DeflateOptions, Omit<ZipAttributes, "compression"> {
+export interface ZipOptions extends Omit<ZipAttributes, "compression"> {
   compressionMethods?: CompressionMethodMap;
 }
 
 export interface FlattenedZipOptions
   extends Omit<ZipOptions, "compressionMethods"> {
-  compression?: [CompressionMethod, Compressor];
+  compression?: [CompressionMethod, Compress];
 }
 
 /**
@@ -131,14 +123,14 @@ export function* flatten(
     if (Array.isArray(val)) {
       let { compression, ...rest } = val[1];
       val = val[0];
-      if (typeof compression === "string") {
+      if (!Array.isArray(compression) && compression) {
         const compresser = globalOptions.compressionMethods?.[compression];
         if (!compresser) {
           throw new Error(`Compression method ${compression} not found`);
         }
         compression = [compression, compresser];
       }
-      op = {...globalOptions, ...rest, compression};
+      op = { ...globalOptions, ...rest, compression };
     }
     if (val instanceof u8) {
       yield [n, val, op];

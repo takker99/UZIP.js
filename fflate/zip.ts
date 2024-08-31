@@ -45,7 +45,7 @@ export const zip = (data: Zippable, opts?: ZipOptions): Uint8Array => {
     const encodedComment = comment ? encode(comment) : undefined;
     const encodedCommentLength = encodedComment?.length;
     const [compressionMethod, compress] = p.compression ?? [];
-    const fileData = compress?.(file, p) ?? file;
+    const fileData = compress?.(file) ?? file;
     if (!fileData) err(UnknownCompressionMethod);
     const compressedSize = fileData.length;
     files.push([
